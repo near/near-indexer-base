@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let pool = MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
+    sqlx::migrate!().run(&pool).await?;
 
     let select_query = sqlx::query_as::<MySql, Aaa>("SELECT * FROM aaa");
     // let select_query = sqlx::query_as!(Aaa, "SELECT * FROM aaa");
@@ -58,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     init_tracing();
 
     let config = LakeConfig {
-        s3_bucket_name: "near-lake-testnet".to_string(),
+        s3_bucket_name: "near-lake-data-testnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
         start_block_height: 83030086, // want to start from the freshest
     };
@@ -72,19 +73,6 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-// TODO check that I don't need to adapt the types (it's created successfully)
-// TODO think about migrations
-// CREATE TABLE blocks (
-//     block_height numeric(20,0) NOT NULL,
-//     block_hash text NOT NULL,
-//     prev_block_hash text NOT NULL,
-//     block_timestamp numeric(20,0) NOT NULL,
-//     total_supply numeric(45,0) NOT NULL,
-//     gas_price numeric(45,0) NOT NULL,
-//     author_account_id text NOT NULL,
-//     PRIMARY KEY (block_hash)
-// );
 
 async fn handle_streamer_message(
     streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,

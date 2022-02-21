@@ -1,33 +1,56 @@
 use futures::StreamExt;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tracing_subscriber::EnvFilter;
-
+use near_indexer_primitives;
 use near_lake_framework::LakeConfig;
 use sqlx::{FromRow, MySql, MySqlPool, Pool, Row};
-
+use bigdecimal::BigDecimal;
 use dotenv::dotenv;
 use std::env;
+use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize, Deserialize)]
 struct Aaa {
-    a: i64,
+    // https://docs.rs/sqlx/0.4.0-beta.1/sqlx/mysql/types/index.html
+    a: BigDecimal,
 }
+
+// #[derive(Debug, FromRow)]
+// pub struct Block {
+//     pub block_height: BigDecimal,
+//     pub block_hash: String,
+//     pub prev_block_hash: String,
+//     pub block_timestamp: BigDecimal,
+//     pub total_supply: BigDecimal,
+//     pub gas_price: BigDecimal,
+//     pub author_account_id: String,
+// }
+//
+// impl From<&near_indexer_primitives::views::BlockView> for Block {
+//     fn from(block_view: &near_indexer_primitives::views::BlockView) -> Self {
+//         Self {
+//             block_height: block_view.header.height.into(),
+//             block_hash: block_view.header.hash.to_string(),
+//             prev_block_hash: block_view.header.prev_hash.to_string(),
+//             block_timestamp: block_view.header.timestamp.into(),
+//             total_supply: BigDecimal::from_str(block_view.header.total_supply.to_string().as_str())
+//                 .expect("`total_supply` expected to be u128"),
+//             gas_price: BigDecimal::from_str(block_view.header.gas_price.to_string().as_str())
+//                 .expect("`gas_price` expected to be u128"),
+//             author_account_id: block_view.author.to_string(),
+//         }
+//     }
+// }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
-    let opts = MySqlConnectOptions::new()
-        .host(&env::var("SINGLESTORE_HOST")?)
-        .username(&env::var("SINGLESTORE_USER")?)
-        .password(&env::var("SINGLESTORE_PASSWORD")?)
-        .database(&env::var("SINGLESTORE_DATABASE")?);
-    let pool = MySqlPoolOptions::new().connect_with(opts).await?;
+    let pool = MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
 
-    // TODO Since it's not possible to create DATABASE_URL properly (we can't escape the characters from password),
-    // I can't use sqlx::query_as! macro, right?
-    // https://docs.rs/sqlx/0.3.0/sqlx/macro.query.html#requirements
-    let select_query = sqlx::query_as::<_, Aaa>("SELECT * FROM aaa");
+    let select_query = sqlx::query_as::<MySql, Aaa>( "SELECT * FROM aaa");
+    // let select_query = sqlx::query_as!(Aaa, "SELECT * FROM aaa");
     let a = select_query.fetch_all(&pool).await?;
 
     init_tracing();
@@ -48,26 +71,45 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+// TODO check that I don't need to adapt the types (it's created successfully)
+// TODO think about migrations
+// CREATE TABLE blocks (
+//     block_height numeric(20,0) NOT NULL,
+//     block_hash text NOT NULL,
+//     prev_block_hash text NOT NULL,
+//     block_timestamp numeric(20,0) NOT NULL,
+//     total_supply numeric(45,0) NOT NULL,
+//     gas_price numeric(45,0) NOT NULL,
+//     author_account_id text NOT NULL,
+//     PRIMARY KEY (block_hash)
+// );
+
 async fn handle_streamer_message(
     streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,
     pool: &Pool<MySql>,
 ) {
-    eprintln!(
-        "{} / shards {}",
-        streamer_message.block.header.height,
-        streamer_message.shards.len()
-    );
-    // TODO find a better way to insert the objects to the DB
-    let query = format!(
-        r#"
-       INSERT INTO aaa
-       VALUES ({})
-       "#,
-        &streamer_message.block.header.height
-    );
-    let new_user = sqlx::query_as::<_, Aaa>(&query);
-    let a = new_user.fetch_all(&pool.clone()).await;
-    let b = 0;
+    // let block_model = Block::from(&streamer_message.block);
+    //
+    // eprintln!(
+    //     "{} / shards {}",
+    //     streamer_message.block.header.height,
+    //     streamer_message.shards.len()
+    // );
+    // // TODO find a better way to insert the objects to the DB
+    // let new_user = sqlx::query!(r#"
+    //    INSERT INTO blocks
+    //    VALUES (?, ?, ?, ?, ?, ?, ?)
+    //    "#,
+    //     block_model.block_height,
+    //     block_model.block_hash,
+    //     block_model.prev_block_hash,
+    //     block_model.block_timestamp,
+    //     block_model.total_supply,
+    //     block_model.gas_price,
+    //     block_model.author_account_id
+    // );
+    // let a = new_user.fetch_all(&pool.clone()).await;
+    // let b = 0;
 }
 
 fn init_tracing() {

@@ -20,5 +20,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.55"
 sqlx = { version = "0.5.11", features = ["runtime-tokio-native-tls", "mysql", "bigdecimal"] }
 
-near-indexer-primitives = { git = "https://github.com/near/nearcore", rev = "ea731e37efd2db44313a2769ad5b0e12ae9c3e34" }
-near-lake-framework = { git = "https://github.com/near/near-lake-framework", rev = "e27eecbb20fd26b2efeaa21ebb998db47521a73e" }
+near-indexer-primitives = { git = "https://github.com/near/nearcore", rev = "5f09a3bf042b32d1ff26554433ad6449199ea02a" }
+near-lake-framework = { git = "https://github.com/near/near-lake-framework", rev = "ed73d8552728cb340ce2659f6e94a3f3d5f3f5c0" }

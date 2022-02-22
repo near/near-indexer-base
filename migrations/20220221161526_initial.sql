@@ -3,75 +3,46 @@
 -- - Single Store does not support FKs: all FKs are deleted
 -- - All indexes are commented: it's better to make the research about indexes.
 -- - All PKs are created right inside the corresponding table
--- - Dropped circulating supply, FT, NFT
+-- - Dropped circulating supply, FT, NFT (they will be in a separate project)
+-- - Dropped transaction_actions (we wanted to do that)
 
-# TODO How to create enums
-CREATE
-TYPE access_key_permission_kind AS ENUM (
-    'FULL_ACCESS',
-    'FUNCTION_CALL'
-    );
 
-CREATE
-TYPE action_kind AS ENUM (
-    'CREATE_ACCOUNT',
-    'DEPLOY_CONTRACT',
-    'FUNCTION_CALL',
-    'TRANSFER',
-    'STAKE',
-    'ADD_KEY',
-    'DELETE_KEY',
-    'DELETE_ACCOUNT'
-    );
+# Enums in single store:
+# be careful with nulls, there's always a possiblity to have default value (empty string), no way to create it separately
+# https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/other-types.html
 
-CREATE
-TYPE execution_outcome_status AS ENUM (
-    'UNKNOWN',
-    'FAILURE',
-    'SUCCESS_VALUE',
-    'SUCCESS_RECEIPT_ID'
-    );
-
-CREATE
-TYPE receipt_kind AS ENUM (
-    'ACTION',
-    'DATA'
-    );
-
-CREATE
-TYPE state_change_reason_kind AS ENUM (
-    'TRANSACTION_PROCESSING',
-    'ACTION_RECEIPT_PROCESSING_STARTED',
-    'ACTION_RECEIPT_GAS_REWARD',
-    'RECEIPT_PROCESSING',
-    'POSTPONED_RECEIPT',
-    'UPDATED_DELAYED_RECEIPTS',
-    'VALIDATOR_ACCOUNTS_UPDATE',
-    'MIGRATION',
-    'RESHARDING'
-    );
 
 CREATE TABLE access_keys
 (
-    public_key               text           NOT NULL,
-    account_id               text           NOT NULL,
+    public_key               text                                  NOT NULL,
+    account_id               text                                  NOT NULL,
     created_by_receipt_id    text,
     deleted_by_receipt_id    text,
-    permission_kind access_key_permission_kind NOT NULL,
-    last_update_block_height numeric(20, 0) NOT NULL,
+    permission_kind          ENUM ('FULL_ACCESS', 'FUNCTION_CALL') NOT NULL,
+    last_update_block_height numeric(20, 0)                        NOT NULL,
     PRIMARY KEY (public_key, account_id)
 );
 
-# TODO think about this table separately (issues: Unique keys, artificial id, bigserial)
+# TODO think about this table separately (issues: Unique keys, artificial id)
 # CREATE TABLE account_changes
 # (
-#     id bigserial NOT NULL,
+#     id BIGINT NOT NULL AUTO_INCREMENT,
 #     affected_account_id                text           NOT NULL,
 #     changed_in_block_timestamp         numeric(20, 0) NOT NULL,
 #     changed_in_block_hash              text           NOT NULL,
 #     caused_by_transaction_hash         text,
 #     caused_by_receipt_id               text,
-#     update_reason state_change_reason_kind NOT NULL,
+#     update_reason ENUM (
+#     'TRANSACTION_PROCESSING',
+#     'ACTION_RECEIPT_PROCESSING_STARTED',
+#     'ACTION_RECEIPT_GAS_REWARD',
+#     'RECEIPT_PROCESSING',
+#     'POSTPONED_RECEIPT',
+#     'UPDATED_DELAYED_RECEIPTS',
+#     'VALIDATOR_ACCOUNTS_UPDATE',
+#     'MIGRATION',
+#     'RESHARDING'
+#     ) NOT NULL,
 #     affected_account_nonstaked_balance numeric(45, 0) NOT NULL,
 #     affected_account_staked_balance    numeric(45, 0) NOT NULL,
 #     affected_account_storage_usage     numeric(20, 0) NOT NULL,
@@ -79,25 +50,33 @@ CREATE TABLE access_keys
 #     PRIMARY KEY (id)
 # );
 
-# TODO bigserial
-CREATE TABLE accounts
-(
-    id bigserial NOT NULL,
-    account_id               text           NOT NULL,
-    created_by_receipt_id    text,
-    deleted_by_receipt_id    text,
-    last_update_block_height numeric(20, 0) NOT NULL,
-    UNIQUE KEY (account_id),
-    PRIMARY KEY (id)
-);
+# TODO we have issues with the unique key
+# https://www.singlestore.com/forum/t/creating-table-with-unique-index/1501/3
+# CREATE TABLE accounts
+# (
+#     id BIGINT NOT NULL AUTO_INCREMENT,
+#     account_id               text           NOT NULL,
+#     created_by_receipt_id    text,
+#     deleted_by_receipt_id    text,
+#     last_update_block_height numeric(20, 0) NOT NULL,
+#     UNIQUE KEY (account_id),
+#     PRIMARY KEY (id)
+# );
 
-# TODO jsonb
 CREATE TABLE action_receipt_actions
 (
-    receipt_id              text    NOT NULL,
-    index_in_action_receipt integer NOT NULL,
-    action_kind action_kind NOT NULL,
-    args jsonb NOT NULL,
+    receipt_id                          text           NOT NULL,
+    index_in_action_receipt             integer        NOT NULL,
+    action_kind                         ENUM (
+        'CREATE_ACCOUNT',
+        'DEPLOY_CONTRACT',
+        'FUNCTION_CALL',
+        'TRANSFER',
+        'STAKE',
+        'ADD_KEY',
+        'DELETE_KEY',
+        'DELETE_ACCOUNT')                              NOT NULL,
+    args                                json           NOT NULL,
     receipt_predecessor_account_id      text           NOT NULL,
     receipt_receiver_account_id         text           NOT NULL,
     receipt_included_in_block_timestamp numeric(20, 0) NOT NULL,
@@ -152,12 +131,12 @@ CREATE TABLE chunks
     PRIMARY KEY (chunk_hash)
 );
 
-# TODO bytea
+# https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/blob-types.html
 CREATE TABLE data_receipts
 (
     data_id    text NOT NULL,
     receipt_id text NOT NULL,
-    data bytea,
+    data       blob,
     PRIMARY KEY (data_id)
 );
 
@@ -178,7 +157,12 @@ CREATE TABLE execution_outcomes
     gas_burnt                   numeric(20, 0) NOT NULL,
     tokens_burnt                numeric(45, 0) NOT NULL,
     executor_account_id         text           NOT NULL,
-    status execution_outcome_status NOT NULL,
+    status                      ENUM (
+        'UNKNOWN',
+        'FAILURE',
+        'SUCCESS_VALUE',
+        'SUCCESS_RECEIPT_ID'
+        )                                      NOT NULL,
     shard_id                    numeric(20, 0) NOT NULL,
     PRIMARY KEY (receipt_id)
 );
@@ -192,18 +176,12 @@ CREATE TABLE receipts
     included_in_block_timestamp      numeric(20, 0) NOT NULL,
     predecessor_account_id           text           NOT NULL,
     receiver_account_id              text           NOT NULL,
-    receipt_kind receipt_kind NOT NULL,
+    receipt_kind                     ENUM (
+        'ACTION',
+        'DATA'
+        )                                           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
     PRIMARY KEY (receipt_id)
-);
-
-CREATE TABLE transaction_actions
-(
-    transaction_hash     text    NOT NULL,
-    index_in_transaction integer NOT NULL,
-    action_kind action_kind NOT NULL,
-    args jsonb NOT NULL,
-    PRIMARY KEY (transaction_hash, index_in_transaction)
 );
 
 CREATE TABLE transactions
@@ -218,7 +196,12 @@ CREATE TABLE transactions
     nonce                           numeric(20, 0) NOT NULL,
     receiver_account_id             text           NOT NULL,
     signature                       text           NOT NULL,
-    status execution_outcome_status NOT NULL,
+    status                          ENUM (
+        'UNKNOWN',
+        'FAILURE',
+        'SUCCESS_VALUE',
+        'SUCCESS_RECEIPT_ID'
+        )                                          NOT NULL,
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
     receipt_conversion_tokens_burnt numeric(45, 0),
@@ -263,7 +246,6 @@ CREATE TABLE transactions
 # CREATE INDEX transactions_signer_public_key_idx ON transactions USING btree (signer_public_key);
 # CREATE INDEX receipts_originated_from_transaction_hash_idx ON receipts (originated_from_transaction_hash);
 # CREATE INDEX transactions_receiver_account_id_idx ON transactions (receiver_account_id);
-# CREATE INDEX transactions_actions_action_kind_idx ON transaction_actions (action_kind);
 # CREATE INDEX action_receipt_actions_action_kind_idx ON action_receipt_actions (action_kind);
 # CREATE INDEX execution_outcomes_status_idx ON execution_outcomes (status);
 # CREATE INDEX action_receipt_actions_receipt_predecessor_account_id_idx ON action_receipt_actions (receipt_predecessor_account_id);

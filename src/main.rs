@@ -12,11 +12,6 @@ use std::env;
 use std::str::FromStr;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
-struct Aaa {
-    // https://docs.rs/sqlx/0.4.0-beta.1/sqlx/mysql/types/index.html
-    a: BigDecimal,
-}
 
 #[derive(Debug, FromRow)]
 pub struct Block {
@@ -50,11 +45,8 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let pool = MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
-    sqlx::migrate!().run(&pool).await?;
-
-    let select_query = sqlx::query_as::<MySql, Aaa>("SELECT * FROM aaa");
-    // let select_query = sqlx::query_as!(Aaa, "SELECT * FROM aaa");
-    let a = select_query.fetch_all(&pool).await?;
+    // TODO Error: while executing migrations: error returned from database: 1128 (HY000): Function 'near_indexer.GET_LOCK' is not defined
+    // sqlx::migrate!().run(&pool).await?;
 
     init_tracing();
 

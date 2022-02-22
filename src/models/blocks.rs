@@ -1,3 +1,4 @@
+use std::fmt;
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
@@ -26,5 +27,21 @@ impl From<&near_indexer_primitives::views::BlockView> for Block {
                 .expect("`gas_price` expected to be u128"),
             author_account_id: block_view.author.to_string(),
         }
+    }
+}
+
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}','{}','{}','{}','{}')",
+            self.block_height,
+            self.block_hash,
+            self.prev_block_hash,
+            self.block_timestamp,
+            self.total_supply,
+            self.gas_price,
+            self.author_account_id
+        )
     }
 }

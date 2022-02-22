@@ -1,5 +1,6 @@
 mod db_adapters;
 mod models;
+mod utils;
 
 use dotenv::dotenv;
 use futures::StreamExt;
@@ -39,6 +40,13 @@ async fn handle_streamer_message(
     pool: &sqlx::Pool<sqlx::MySql>,
 ) -> anyhow::Result<()> {
     db_adapters::blocks::store_block(pool, &streamer_message.block).await?;
+
+    db_adapters::chunks::store_chunks(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+    )
+    .await?;
 
     eprintln!(
         "{} / shards {}",

@@ -13,8 +13,8 @@
 // pub(crate) use serializers::extract_action_type_and_value_from_action_view;
 //
 // pub mod access_keys;
-pub mod blocks;
-// pub mod chunks;
+pub(crate) mod blocks;
+pub(crate) mod chunks;
 // pub mod enums;
 // pub mod execution_outcomes;
 // pub mod receipts;

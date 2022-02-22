@@ -1,9 +1,8 @@
+use std::fmt;
+
 use bigdecimal::BigDecimal;
 
-use crate::schema;
-use schema::chunks;
-
-#[derive(Insertable, Clone, Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Chunk {
     pub included_in_block_hash: String,
     pub chunk_hash: String,
@@ -16,8 +15,8 @@ pub struct Chunk {
 
 impl Chunk {
     pub fn from_chunk_view(
-        chunk_view: &near_indexer::IndexerChunkView,
-        block_hash: &near_indexer::near_primitives::hash::CryptoHash,
+        chunk_view: &near_indexer_primitives::IndexerChunkView,
+        block_hash: &near_indexer_primitives::CryptoHash,
     ) -> Self {
         Self {
             included_in_block_hash: block_hash.to_string(),
@@ -28,5 +27,21 @@ impl Chunk {
             gas_used: chunk_view.header.gas_used.into(),
             author_account_id: chunk_view.author.to_string(),
         }
+    }
+}
+
+impl fmt::Display for Chunk {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}','{}','{}','{}','{}')",
+            self.included_in_block_hash,
+            self.chunk_hash,
+            self.shard_id,
+            self.signature,
+            self.gas_limit,
+            self.gas_used,
+            self.author_account_id
+        )
     }
 }

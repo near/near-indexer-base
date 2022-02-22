@@ -1,29 +1,19 @@
-use crate::models::blocks::Block;
+use crate::{batch_insert, models};
+
+use itertools::Itertools;
 
 /// Saves block to database
 pub(crate) async fn store_block(
     pool: &sqlx::Pool<sqlx::MySql>,
     block: &near_indexer_primitives::views::BlockView,
 ) -> anyhow::Result<()> {
-    let block_model = Block::from(block);
-    // TODO find a better way to insert the objects to the DB
+    let block_model = models::blocks::Block::from(block);
     // TODO now it fails if it tries to insert already inserted line. Think how to act better
-    sqlx::query!(
-        r#"
-       INSERT INTO blocks
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       "#,
-        block_model.block_height,
-        block_model.block_hash,
-        block_model.prev_block_hash,
-        block_model.block_timestamp,
-        block_model.total_supply,
-        block_model.gas_price,
-        block_model.author_account_id
+    batch_insert!(
+        &pool.clone(),
+        "INSERT INTO blocks VALUES {}",
+        vec![&block_model]
     )
-    .fetch_all(&pool.clone())
-    .await?;
-    Ok(())
 }
 
 // /// Gets the latest block's height from database

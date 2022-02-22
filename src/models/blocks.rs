@@ -2,12 +2,7 @@ use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 
-use near_indexer::near_primitives;
-
-use crate::schema;
-use schema::blocks;
-
-#[derive(Debug, FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Block {
     pub block_height: BigDecimal,
     pub block_hash: String,

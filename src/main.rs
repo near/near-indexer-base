@@ -3,10 +3,27 @@ mod models;
 mod utils;
 
 use dotenv::dotenv;
-use futures::StreamExt;
+use futures::{StreamExt, try_join};
 use near_lake_framework::LakeConfig;
 use std::env;
+use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
+use cached::SizedCache;
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub enum ReceiptOrDataId {
+    ReceiptId(near_indexer_primitives::CryptoHash),
+    DataId(near_indexer_primitives::CryptoHash),
+}
+// Creating type aliases to make HashMap types for cache more explicit
+pub type ParentTransactionHashString = String;
+// Introducing a simple cache for Receipts to find their parent Transactions without
+// touching the database
+// The key is ReceiptID
+// The value is TransactionHash (the very parent of the Receipt)
+pub type ReceiptsCache =
+std::sync::Arc<Mutex<SizedCache<ReceiptOrDataId, ParentTransactionHashString>>>;
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -25,9 +42,17 @@ async fn main() -> anyhow::Result<()> {
     };
     let stream = near_lake_framework::streamer(config);
 
+    // We want to prevent unnecessary SELECT queries to the database to find
+    // the Transaction hash for the Receipt.
+    // Later we need to find the Receipt which is a parent to underlying Receipts.
+    // Receipt ID will of the child will be stored as key and parent Transaction hash/Receipt ID
+    // will be stored as a value
+    let receipts_cache: ReceiptsCache =
+        std::sync::Arc::new(Mutex::new(SizedCache::with_size(100_000)));
+
     // TODO now we ignore the errors here, we never fail. Change it
     let mut handlers = tokio_stream::wrappers::ReceiverStream::new(stream)
-        .map(|streamer_message| handle_streamer_message(streamer_message, &pool))
+        .map(|streamer_message| handle_streamer_message(streamer_message, &pool, std::sync::Arc::clone(&receipts_cache)))
         .buffer_unordered(1usize);
 
     while let Some(_handle_message) = handlers.next().await {}
@@ -38,21 +63,32 @@ async fn main() -> anyhow::Result<()> {
 async fn handle_streamer_message(
     streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,
     pool: &sqlx::Pool<sqlx::MySql>,
+    receipts_cache: ReceiptsCache,
 ) -> anyhow::Result<()> {
-    db_adapters::blocks::store_block(pool, &streamer_message.block).await?;
-
-    db_adapters::chunks::store_chunks(
-        pool,
-        &streamer_message.shards,
-        &streamer_message.block.header.hash,
-    )
-    .await?;
-
     eprintln!(
         "{} / shards {}",
         streamer_message.block.header.height,
         streamer_message.shards.len()
     );
+    let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
+
+    let chunks_future = db_adapters::chunks::store_chunks(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+    );
+
+    let transactions_future = db_adapters::transactions::store_transactions(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
+
+    try_join!(blocks_future, chunks_future, transactions_future)?;
+
+    eprintln!("finished");
     Ok(())
 }
 

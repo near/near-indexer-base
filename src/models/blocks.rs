@@ -30,6 +30,9 @@ impl From<&near_indexer_primitives::views::BlockView> for Block {
     }
 }
 
+// TODO do not abuse display
+// TODO I need to escape each field here. Next developer can forget about it.
+// It's better to make it in a one place. Create the small library for it? :)
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(

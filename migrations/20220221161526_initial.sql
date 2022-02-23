@@ -184,6 +184,7 @@ CREATE TABLE receipts
     PRIMARY KEY (receipt_id)
 );
 
+# TODO decided to use compound primary key here, need to discuss it
 CREATE TABLE transactions
 (
     transaction_hash                text           NOT NULL,
@@ -205,7 +206,7 @@ CREATE TABLE transactions
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
     receipt_conversion_tokens_burnt numeric(45, 0),
-    PRIMARY KEY (transaction_hash)
+    PRIMARY KEY (transaction_hash, included_in_block_hash)
 );
 
 # TODO make the research about indexes

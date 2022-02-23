@@ -6,8 +6,11 @@ macro_rules! batch_insert {
         }
 
         // TODO find a better way to insert the objects to the DB
+        // TODO add split into chunks logic
         let values = $rows.iter().map(|item| item.to_string()).join(", ");
+        eprintln!("{}", &format!($query, values));
         sqlx::query(&format!($query, values)).execute($pool).await?;
+        eprintln!($query, "finished");
         Ok(())
     }};
 }

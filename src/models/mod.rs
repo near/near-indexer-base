@@ -15,8 +15,22 @@
 // pub mod access_keys;
 pub(crate) mod blocks;
 pub(crate) mod chunks;
-// pub mod enums;
 // pub mod execution_outcomes;
 // pub mod receipts;
 // mod serializers;
-// pub mod transactions;
+pub(crate) mod transactions;
+
+trait PrintEnum {
+    fn print(&self) -> &str;
+}
+
+impl PrintEnum for near_indexer_primitives::views::ExecutionStatusView {
+    fn print(&self) -> &str {
+        match self {
+            near_indexer_primitives::views::ExecutionStatusView::Unknown => "UNKNOWN",
+            near_indexer_primitives::views::ExecutionStatusView::Failure(_) => "FAILURE",
+            near_indexer_primitives::views::ExecutionStatusView::SuccessValue(_) => "SUCCESS_VALUE",
+            near_indexer_primitives::views::ExecutionStatusView::SuccessReceiptId(_) => "SUCCESS_RECEIPT_ID",
+        }
+    }
+}

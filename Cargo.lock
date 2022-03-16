@@ -1471,10 +1471,12 @@ name = "near-lake-flows-into-sql"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.11.0",
  "bigdecimal",
  "cached",
  "dotenv",
  "futures",
+ "hex",
  "itertools 0.9.0",
  "near-indexer-primitives",
  "near-lake-framework",

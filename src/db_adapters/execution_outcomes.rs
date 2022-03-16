@@ -1,14 +1,12 @@
-use actix_diesel::dsl::AsyncRunQueryDsl;
 use cached::Cached;
-use diesel::PgConnection;
 use futures::future::try_join_all;
+use itertools::Itertools;
 
-use crate::models;
-use crate::schema;
+use crate::{batch_insert, models};
 
 pub(crate) async fn store_execution_outcomes(
-    pool: &actix_diesel::Database<PgConnection>,
-    shards: &[near_indexer::IndexerShard],
+    pool: &sqlx::Pool<sqlx::MySql>,
+    shards: &[near_indexer_primitives::IndexerShard],
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
@@ -27,9 +25,9 @@ pub(crate) async fn store_execution_outcomes(
 
 /// Saves ExecutionOutcome to database and then saves ExecutionOutcomesReceipts
 pub async fn store_execution_outcomes_for_chunk(
-    pool: &actix_diesel::Database<PgConnection>,
-    execution_outcomes: &[near_indexer::IndexerExecutionOutcomeWithReceipt],
-    shard_id: near_indexer::near_primitives::types::ShardId,
+    pool: &sqlx::Pool<sqlx::MySql>,
+    execution_outcomes: &[near_indexer_primitives::IndexerExecutionOutcomeWithReceipt],
+    shard_id: near_indexer_primitives::types::ShardId,
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
@@ -82,24 +80,16 @@ pub async fn store_execution_outcomes_for_chunk(
     // releasing the lock
     drop(receipts_cache_lock);
 
-    crate::await_retry_or_panic!(
-        diesel::insert_into(schema::execution_outcomes::table)
-            .values(outcome_models.clone())
-            .on_conflict_do_nothing()
-            .execute_async(pool),
-        10,
-        "ExecutionOutcomes were stored in database".to_string(),
-        &outcome_models
+    batch_insert!(
+        &pool.clone(),
+        "INSERT INTO execution_outcomes VALUES {}",
+        outcome_models
     );
 
-    crate::await_retry_or_panic!(
-        diesel::insert_into(schema::execution_outcome_receipts::table)
-            .values(outcome_receipt_models.clone())
-            .on_conflict_do_nothing()
-            .execute_async(pool),
-        10,
-        "ExecutionOutcomeReceipts were stored in database".to_string(),
-        &outcome_receipt_models
+    batch_insert!(
+        &pool.clone(),
+        "INSERT INTO execution_outcome_receipts VALUES {}",
+        outcome_receipt_models
     );
 
     Ok(())

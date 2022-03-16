@@ -13,5 +13,6 @@ pub(crate) async fn store_chunks(
         .map(|chunk| models::chunks::Chunk::from_chunk_view(chunk, block_hash))
         .collect();
 
-    batch_insert!(&pool.clone(), "INSERT INTO chunks VALUES {}", chunk_models)
+    batch_insert!(&pool.clone(), "INSERT INTO chunks VALUES {}", chunk_models);
+    Ok(())
 }

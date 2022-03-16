@@ -13,7 +13,8 @@ pub(crate) async fn store_block(
         &pool.clone(),
         "INSERT INTO blocks VALUES {}",
         vec![&block_model]
-    )
+    );
+    Ok(())
 }
 
 // /// Gets the latest block's height from database

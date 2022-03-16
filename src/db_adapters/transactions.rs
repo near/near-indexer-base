@@ -18,11 +18,10 @@ pub(crate) async fn store_transactions(
         .map(|chunk| {
             store_chunk_transactions(
                 pool,
-                chunk
-                    .transactions
-                    .iter()
-                    .enumerate()
-                    .collect::<Vec<(usize, &near_indexer_primitives::IndexerTransactionWithOutcome)>>(),
+                chunk.transactions.iter().enumerate().collect::<Vec<(
+                    usize,
+                    &near_indexer_primitives::IndexerTransactionWithOutcome,
+                )>>(),
                 &chunk.header.chunk_hash,
                 block_hash,
                 block_timestamp,
@@ -37,7 +36,10 @@ pub(crate) async fn store_transactions(
 
 async fn store_chunk_transactions(
     pool: &sqlx::Pool<sqlx::MySql>,
-    transactions: Vec<(usize, &near_indexer_primitives::IndexerTransactionWithOutcome)>,
+    transactions: Vec<(
+        usize,
+        &near_indexer_primitives::IndexerTransactionWithOutcome,
+    )>,
     chunk_hash: &near_indexer_primitives::CryptoHash,
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
@@ -47,7 +49,7 @@ async fn store_chunk_transactions(
 ) -> anyhow::Result<()> {
     let mut receipts_cache_lock = receipts_cache.lock().await;
 
-    let transaction_models: Vec<models::transactions::Transaction> = transactions
+    let transaction_models: Vec<models::Transaction> = transactions
         .iter()
         .map(|(index, tx)| {
             let transaction_hash = tx.transaction.hash.to_string() + transaction_hash_suffix;
@@ -69,7 +71,7 @@ async fn store_chunk_transactions(
                 transaction_hash.clone(),
             );
 
-            models::transactions::Transaction::from_indexer_transaction(
+            models::Transaction::from_indexer_transaction(
                 tx,
                 &transaction_hash,
                 &converted_into_receipt_id.to_string(),
@@ -88,5 +90,6 @@ async fn store_chunk_transactions(
         &pool.clone(),
         "INSERT INTO transactions VALUES {}",
         transaction_models
-    )
+    );
+    Ok(())
 }

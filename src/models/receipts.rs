@@ -1,18 +1,11 @@
 use std::convert::TryFrom;
+use std::fmt;
 use std::str::FromStr;
 
+use crate::models::PrintEnum;
 use bigdecimal::BigDecimal;
 
-use near_indexer::near_primitives::views::DataReceiverView;
-
-use crate::models::enums::{ActionKind, ReceiptKind};
-use crate::schema;
-use schema::{
-    action_receipt_actions, action_receipt_input_data, action_receipt_output_data, action_receipts,
-    data_receipts, receipts,
-};
-
-#[derive(Insertable, Queryable, Clone, Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Receipt {
     pub receipt_id: String,
     pub included_in_block_hash: String,
@@ -21,16 +14,17 @@ pub struct Receipt {
     pub included_in_block_timestamp: BigDecimal,
     pub predecessor_account_id: String,
     pub receiver_account_id: String,
-    pub receipt_kind: ReceiptKind,
+    // TODO enum
+    pub receipt_kind: String,
     pub originated_from_transaction_hash: String,
 }
 
 impl Receipt {
     pub fn from_receipt_view(
-        receipt: &near_indexer::near_primitives::views::ReceiptView,
-        block_hash: &near_indexer::near_primitives::hash::CryptoHash,
+        receipt: &near_indexer_primitives::views::ReceiptView,
+        block_hash: &near_indexer_primitives::CryptoHash,
         transaction_hash: &str,
-        chunk_hash: &near_indexer::near_primitives::hash::CryptoHash,
+        chunk_hash: &near_indexer_primitives::CryptoHash,
         index_in_chunk: i32,
         block_timestamp: u64,
     ) -> Self {
@@ -40,7 +34,7 @@ impl Receipt {
             included_in_chunk_hash: chunk_hash.to_string(),
             predecessor_account_id: receipt.predecessor_id.to_string(),
             receiver_account_id: receipt.receiver_id.to_string(),
-            receipt_kind: (&receipt.receipt).into(),
+            receipt_kind: receipt.receipt.print().to_string(),
             originated_from_transaction_hash: transaction_hash.to_string(),
             index_in_chunk,
             included_in_block_timestamp: block_timestamp.into(),
@@ -48,21 +42,39 @@ impl Receipt {
     }
 }
 
-#[derive(Insertable, Clone, Debug)]
-#[table_name = "data_receipts"]
+impl fmt::Display for Receipt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}','{}','{}','{}','{}','{}','{}')",
+            self.receipt_id,
+            self.included_in_block_hash,
+            self.included_in_chunk_hash,
+            self.index_in_chunk,
+            self.included_in_block_timestamp,
+            self.predecessor_account_id,
+            self.receiver_account_id,
+            self.receipt_kind,
+            self.originated_from_transaction_hash,
+        )
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+// #[table_name = "data_receipts"]
 pub struct DataReceipt {
     pub data_id: String,
     pub receipt_id: String,
     pub data: Option<Vec<u8>>,
 }
 
-impl TryFrom<&near_indexer::near_primitives::views::ReceiptView> for DataReceipt {
+impl TryFrom<&near_indexer_primitives::views::ReceiptView> for DataReceipt {
     type Error = &'static str;
 
     fn try_from(
-        receipt_view: &near_indexer::near_primitives::views::ReceiptView,
+        receipt_view: &near_indexer_primitives::views::ReceiptView,
     ) -> Result<Self, Self::Error> {
-        if let near_indexer::near_primitives::views::ReceiptEnumView::Data { data_id, data } =
+        if let near_indexer_primitives::views::ReceiptEnumView::Data { data_id, data } =
             &receipt_view.receipt
         {
             Ok(Self {
@@ -76,8 +88,21 @@ impl TryFrom<&near_indexer::near_primitives::views::ReceiptView> for DataReceipt
     }
 }
 
-#[derive(Insertable, Clone, Debug)]
-#[table_name = "action_receipts"]
+impl fmt::Display for DataReceipt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{:?}')",
+            self.data_id,
+            self.receipt_id,
+            // TODO handle blobs correctly
+            self.data,
+        )
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+// #[table_name = "action_receipts"]
 pub struct ActionReceipt {
     pub receipt_id: String,
     pub signer_account_id: String,
@@ -85,13 +110,13 @@ pub struct ActionReceipt {
     pub gas_price: BigDecimal,
 }
 
-impl TryFrom<&near_indexer::near_primitives::views::ReceiptView> for ActionReceipt {
+impl TryFrom<&near_indexer_primitives::views::ReceiptView> for ActionReceipt {
     type Error = &'static str;
 
     fn try_from(
-        receipt_view: &near_indexer::near_primitives::views::ReceiptView,
+        receipt_view: &near_indexer_primitives::views::ReceiptView,
     ) -> Result<Self, Self::Error> {
-        if let near_indexer::near_primitives::views::ReceiptEnumView::Action {
+        if let near_indexer_primitives::views::ReceiptEnumView::Action {
             signer_id,
             signer_public_key,
             gas_price,
@@ -111,12 +136,23 @@ impl TryFrom<&near_indexer::near_primitives::views::ReceiptView> for ActionRecei
     }
 }
 
-#[derive(Insertable, Clone, Debug)]
-#[table_name = "action_receipt_actions"]
+impl fmt::Display for ActionReceipt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}','{}')",
+            self.receipt_id, self.signer_account_id, self.signer_public_key, self.gas_price,
+        )
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+// #[table_name = "action_receipt_actions"]
 pub struct ActionReceiptAction {
     pub receipt_id: String,
     pub index_in_action_receipt: i32,
-    pub action_kind: ActionKind,
+    // TODO enum
+    pub action_kind: String,
     pub args: serde_json::Value,
     pub receipt_predecessor_account_id: String,
     pub receipt_receiver_account_id: String,
@@ -127,7 +163,7 @@ impl ActionReceiptAction {
     pub fn from_action_view(
         receipt_id: String,
         index: i32,
-        action_view: &near_indexer::near_primitives::views::ActionView,
+        action_view: &near_indexer_primitives::views::ActionView,
         predecessor_account_id: String,
         receiver_account_id: String,
         block_timestamp: u64,
@@ -147,8 +183,24 @@ impl ActionReceiptAction {
     }
 }
 
-#[derive(Insertable, Clone, Debug)]
-#[table_name = "action_receipt_input_data"]
+impl fmt::Display for ActionReceiptAction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}','{}','{}','{}','{}')",
+            self.receipt_id,
+            self.index_in_action_receipt,
+            self.action_kind,
+            self.args,
+            self.receipt_predecessor_account_id,
+            self.receipt_receiver_account_id,
+            self.receipt_included_in_block_timestamp,
+        )
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+// #[table_name = "action_receipt_input_data"]
 pub struct ActionReceiptInputData {
     pub input_to_receipt_id: String,
     pub input_data_id: String,
@@ -163,8 +215,18 @@ impl ActionReceiptInputData {
     }
 }
 
-#[derive(Insertable, Clone, Debug)]
-#[table_name = "action_receipt_output_data"]
+impl fmt::Display for ActionReceiptInputData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}')",
+            self.input_to_receipt_id, self.input_data_id,
+        )
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+// #[table_name = "action_receipt_output_data"]
 pub struct ActionReceiptOutputData {
     pub output_from_receipt_id: String,
     pub output_data_id: String,
@@ -172,11 +234,24 @@ pub struct ActionReceiptOutputData {
 }
 
 impl ActionReceiptOutputData {
-    pub fn from_data_receiver(receipt_id: String, data_receiver: &DataReceiverView) -> Self {
+    pub fn from_data_receiver(
+        receipt_id: String,
+        data_receiver: &near_indexer_primitives::views::DataReceiverView,
+    ) -> Self {
         Self {
             output_from_receipt_id: receipt_id,
             output_data_id: data_receiver.data_id.to_string(),
             receiver_account_id: data_receiver.receiver_id.to_string(),
         }
+    }
+}
+
+impl fmt::Display for ActionReceiptOutputData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "('{}','{}','{}')",
+            self.output_from_receipt_id, self.output_data_id, self.receiver_account_id,
+        )
     }
 }

@@ -2,13 +2,13 @@ mod db_adapters;
 mod models;
 mod utils;
 
+use cached::SizedCache;
 use dotenv::dotenv;
-use futures::{StreamExt, try_join};
+use futures::{try_join, StreamExt};
 use near_lake_framework::LakeConfig;
 use std::env;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
-use cached::SizedCache;
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ReceiptOrDataId {
@@ -22,8 +22,7 @@ pub type ParentTransactionHashString = String;
 // The key is ReceiptID
 // The value is TransactionHash (the very parent of the Receipt)
 pub type ReceiptsCache =
-std::sync::Arc<Mutex<SizedCache<ReceiptOrDataId, ParentTransactionHashString>>>;
-
+    std::sync::Arc<Mutex<SizedCache<ReceiptOrDataId, ParentTransactionHashString>>>;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,9 +35,13 @@ async fn main() -> anyhow::Result<()> {
     init_tracing();
 
     let config = LakeConfig {
-        s3_bucket_name: "near-lake-data-testnet".to_string(),
+        // //  for testnet, lake starts streaming from 42839521
+        //     s3_bucket_name: "near-lake-data-testnet".to_string(),
+        //     s3_region_name: "eu-central-1".to_string(),
+        //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
+        s3_bucket_name: "near-lake-data-mainnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 83030086, // want to start from the freshest
+        start_block_height: 9823031, //9820214, // 9820210
     };
     let stream = near_lake_framework::streamer(config);
 
@@ -52,7 +55,13 @@ async fn main() -> anyhow::Result<()> {
 
     // TODO now we ignore the errors here, we never fail. Change it
     let mut handlers = tokio_stream::wrappers::ReceiverStream::new(stream)
-        .map(|streamer_message| handle_streamer_message(streamer_message, &pool, std::sync::Arc::clone(&receipts_cache)))
+        .map(|streamer_message| {
+            handle_streamer_message(
+                streamer_message,
+                &pool,
+                std::sync::Arc::clone(&receipts_cache),
+            )
+        })
         .buffer_unordered(1usize);
 
     while let Some(_handle_message) = handlers.next().await {}
@@ -70,6 +79,10 @@ async fn handle_streamer_message(
         streamer_message.block.header.height,
         streamer_message.shards.len()
     );
+    eprintln!(
+        "ReceiptsCache #{} \n {:#?}",
+        streamer_message.block.header.height, &receipts_cache
+    );
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
     let chunks_future = db_adapters::chunks::store_chunks(
@@ -86,7 +99,24 @@ async fn handle_streamer_message(
         std::sync::Arc::clone(&receipts_cache),
     );
 
+    let receipts_future = db_adapters::receipts::store_receipts(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
+
+    let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
+        pool,
+        &streamer_message.shards,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
+
     try_join!(blocks_future, chunks_future, transactions_future)?;
+    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+    try_join!(execution_outcomes_future)?; // this guy thinks that receipts_future finished, and clears the cache
 
     eprintln!("finished");
     Ok(())

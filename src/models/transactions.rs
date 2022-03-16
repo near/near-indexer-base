@@ -48,7 +48,13 @@ impl Transaction {
             receiver_account_id: tx.transaction.receiver_id.to_string(),
             converted_into_receipt_id: converted_into_receipt_id.to_string(),
             included_in_chunk_hash: chunk_hash.to_string(),
-            status: tx.outcome.execution_outcome.outcome.status.print().to_string(),
+            status: tx
+                .outcome
+                .execution_outcome
+                .outcome
+                .status
+                .print()
+                .to_string(),
             receipt_conversion_gas_burnt: tx.outcome.execution_outcome.outcome.gas_burnt.into(),
             receipt_conversion_tokens_burnt: BigDecimal::from_str(
                 tx.outcome

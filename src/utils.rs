@@ -12,6 +12,16 @@ macro_rules! batch_insert {
     }};
 }
 
+#[macro_export]
+macro_rules! run_query {
+    ($pool: expr, $query: expr $(,)?) => {{
+        // TODO find a better way to communicate with the DB
+        eprintln!("{}", $query);
+        sqlx::query($query).execute($pool).await?;
+        eprintln!("{} finished", $query);
+    }};
+}
+
 // Categories for logging
 // TODO naming
 pub(crate) const INDEXER: &str = "indexer";

@@ -1,22 +1,19 @@
+use crate::models::PrintEnum;
+use crate::{batch_insert, models, run_query};
+
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use actix_diesel::dsl::AsyncRunQueryDsl;
-use actix_diesel::Database;
 use bigdecimal::BigDecimal;
-use diesel::{ExpressionMethods, PgConnection, QueryDsl};
 use futures::try_join;
-use tracing::info;
-
-use near_indexer::near_primitives;
-
-use crate::models;
-use crate::schema;
+// TODO it is required my macro. Maybe put it inside the macro?
+use itertools::Itertools;
+use near_indexer_primitives::views::AccessKeyPermissionView;
 
 pub(crate) async fn handle_access_keys(
-    pool: &actix_diesel::Database<PgConnection>,
-    outcomes: &[near_indexer::IndexerExecutionOutcomeWithReceipt],
-    block_height: near_primitives::types::BlockHeight,
+    pool: &sqlx::Pool<sqlx::MySql>,
+    outcomes: &[near_indexer_primitives::IndexerExecutionOutcomeWithReceipt],
+    block_height: near_indexer_primitives::types::BlockHeight,
 ) -> anyhow::Result<()> {
     if outcomes.is_empty() {
         return Ok(());
@@ -26,8 +23,8 @@ pub(crate) async fn handle_access_keys(
         .filter(|outcome_with_receipt| {
             matches!(
                 outcome_with_receipt.execution_outcome.outcome.status,
-                near_primitives::views::ExecutionStatusView::SuccessValue(_)
-                    | near_primitives::views::ExecutionStatusView::SuccessReceiptId(_)
+                near_indexer_primitives::views::ExecutionStatusView::SuccessValue(_)
+                    | near_indexer_primitives::views::ExecutionStatusView::SuccessReceiptId(_)
             )
         })
         .map(|outcome_with_receipt| &outcome_with_receipt.receipt);
@@ -36,10 +33,12 @@ pub(crate) async fn handle_access_keys(
     let mut deleted_accounts = HashMap::<String, String>::new();
 
     for receipt in successful_receipts {
-        if let near_primitives::views::ReceiptEnumView::Action { actions, .. } = &receipt.receipt {
+        if let near_indexer_primitives::views::ReceiptEnumView::Action { actions, .. } =
+            &receipt.receipt
+        {
             for action in actions {
                 match action {
-                    near_primitives::views::ActionView::DeleteAccount { .. } => {
+                    near_indexer_primitives::views::ActionView::DeleteAccount { .. } => {
                         deleted_accounts.insert(
                             receipt.receiver_id.to_string(),
                             receipt.receipt_id.to_string(),
@@ -54,7 +53,7 @@ pub(crate) async fn handle_access_keys(
                                     Some(receipt.receipt_id.to_string());
                             });
                     }
-                    near_primitives::views::ActionView::AddKey {
+                    near_indexer_primitives::views::ActionView::AddKey {
                         public_key,
                         access_key,
                     } => {
@@ -69,7 +68,7 @@ pub(crate) async fn handle_access_keys(
                             ),
                         );
                     }
-                    near_primitives::views::ActionView::DeleteKey { public_key } => {
+                    near_indexer_primitives::views::ActionView::DeleteKey { public_key } => {
                         access_keys
                             .entry((public_key.to_string(), receipt.receiver_id.to_string()))
                             .and_modify(|existing_access_key| {
@@ -83,11 +82,13 @@ pub(crate) async fn handle_access_keys(
                                 deleted_by_receipt_id: Some(receipt.receipt_id.to_string()),
                                 // this is a workaround to avoid additional struct with optional field
                                 // permission_kind is not supposed to change on delete action
-                                permission_kind: models::enums::AccessKeyPermission::FullAccess,
+                                permission_kind: AccessKeyPermissionView::FullAccess
+                                    .print()
+                                    .to_string(), //models::enums::AccessKeyPermission::FullAccess,
                                 last_update_block_height: block_height.into(),
                             });
                     }
-                    near_indexer::near_primitives::views::ActionView::Transfer { .. } => {
+                    near_indexer_primitives::views::ActionView::Transfer { .. } => {
                         if receipt.receiver_id.len() != 64usize {
                             continue;
                         }
@@ -100,9 +101,9 @@ pub(crate) async fn handle_access_keys(
                                     models::access_keys::AccessKey::from_action_view(
                                         &near_crypto::PublicKey::from(public_key.clone()),
                                         &receipt.receiver_id,
-                                        &near_primitives::views::AccessKeyView {
+                                        &near_indexer_primitives::views::AccessKeyView {
                                             nonce: 0,
-                                            permission: near_primitives::views::AccessKeyPermissionView::FullAccess
+                                            permission: near_indexer_primitives::views::AccessKeyPermissionView::FullAccess
                                         },
                                         &receipt.receipt_id,
                                         block_height,
@@ -125,126 +126,90 @@ pub(crate) async fn handle_access_keys(
         .cloned()
         .partition(|model| model.created_by_receipt_id.is_some());
 
-    let delete_access_keys_for_deleted_accounts = async {
-        let last_update_block_height: BigDecimal = block_height.into();
-        for (account_id, deleted_by_receipt_id) in deleted_accounts {
-            let target = schema::access_keys::table
-                .filter(schema::access_keys::dsl::deleted_by_receipt_id.is_null())
-                .filter(
-                    schema::access_keys::dsl::last_update_block_height
-                        .lt(last_update_block_height.clone()),
-                )
-                .filter(schema::access_keys::dsl::account_id.eq(account_id));
-
-            crate::await_retry_or_panic!(
-                diesel::update(target.clone())
-                    .set((
-                        schema::access_keys::dsl::deleted_by_receipt_id
-                            .eq(deleted_by_receipt_id.clone()),
-                        schema::access_keys::dsl::last_update_block_height
-                            .eq(last_update_block_height.clone()),
-                    ))
-                    .execute_async(pool),
-                10,
-                "AccessKeys were deleting".to_string(),
-                &deleted_by_receipt_id
-            );
-        }
-        Ok(())
-    };
-
-    let update_access_keys_future = async {
-        for value in access_keys_to_update {
-            let target = schema::access_keys::table
-                .filter(schema::access_keys::dsl::public_key.eq(value.public_key.clone()))
-                .filter(
-                    schema::access_keys::dsl::last_update_block_height
-                        .lt(value.last_update_block_height.clone()),
-                )
-                .filter(schema::access_keys::dsl::account_id.eq(value.account_id));
-
-            crate::await_retry_or_panic!(
-                diesel::update(target.clone())
-                    .set((
-                        schema::access_keys::dsl::deleted_by_receipt_id
-                            .eq(value.deleted_by_receipt_id.clone()),
-                        schema::access_keys::dsl::last_update_block_height
-                            .eq(value.last_update_block_height.clone()),
-                    ))
-                    .execute_async(pool),
-                10,
-                "AccessKeys were updating".to_string(),
-                &value.public_key
-            );
-        }
-        Ok(())
-    };
-
-    let add_access_keys_future = async {
-        crate::await_retry_or_panic!(
-            diesel::insert_into(schema::access_keys::table)
-                .values(access_keys_to_insert.clone())
-                .on_conflict_do_nothing()
-                .execute_async(pool),
-            10,
-            "AccessKeys were stored in database".to_string(),
-            &access_keys_to_insert
-        );
-
-        for value in access_keys_to_insert {
-            let target = schema::access_keys::table
-                .filter(schema::access_keys::dsl::public_key.eq(value.public_key.clone()))
-                .filter(
-                    schema::access_keys::dsl::last_update_block_height
-                        .lt(value.last_update_block_height.clone()),
-                )
-                .filter(schema::access_keys::dsl::account_id.eq(value.account_id));
-
-            crate::await_retry_or_panic!(
-                diesel::update(target.clone())
-                    .set((
-                        schema::access_keys::dsl::created_by_receipt_id
-                            .eq(value.created_by_receipt_id.clone()),
-                        schema::access_keys::dsl::deleted_by_receipt_id
-                            .eq(value.deleted_by_receipt_id.clone()),
-                        schema::access_keys::dsl::last_update_block_height
-                            .eq(value.last_update_block_height.clone()),
-                    ))
-                    .execute_async(pool),
-                10,
-                "AccessKeys were created".to_string(),
-                &value.public_key
-            );
-        }
-        Ok(())
-    };
-
     try_join!(
-        delete_access_keys_for_deleted_accounts,
-        update_access_keys_future,
-        add_access_keys_future
+        delete_access_keys_for_deleted_accounts(pool, block_height.into(), &deleted_accounts),
+        update_access_keys(pool, &access_keys_to_update),
+        add_access_keys(pool, &access_keys_to_insert),
     )?;
 
     Ok(())
 }
 
-pub(crate) async fn store_access_keys_from_genesis(
-    pool: Database<PgConnection>,
-    access_keys_models: Vec<models::access_keys::AccessKey>,
+// pub(crate) async fn store_access_keys_from_genesis(
+//     pool: Database<PgConnection>,
+//     access_keys_models: Vec<models::access_keys::AccessKey>,
+// ) -> anyhow::Result<()> {
+//     info!(
+//         target: crate::INDEXER_FOR_EXPLORER,
+//         "Adding/updating access keys from genesis..."
+//     );
+//
+//     crate::await_retry_or_panic!(
+//         diesel::insert_into(schema::access_keys::table)
+//             .values(access_keys_models.clone())
+//             .on_conflict_do_nothing()
+//             .execute_async(&pool),
+//         10,
+//         "AccessKeys were stored from genesis".to_string(),
+//         &access_keys_models
+//     );
+//     Ok(())
+// }
+
+async fn delete_access_keys_for_deleted_accounts(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    last_update_block_height: BigDecimal,
+    deleted_accounts: &HashMap<String, String>,
 ) -> anyhow::Result<()> {
-    info!(
-        target: crate::INDEXER_FOR_EXPLORER,
-        "Adding/updating access keys from genesis..."
+    for (account_id, deleted_by_receipt_id) in deleted_accounts {
+        let q = format!(
+            "UPDATE access_keys SET deleted_by_receipt_id = '{0}', last_update_block_height = '{1}'\n
+                 WHERE deleted_by_receipt_id is NULL AND\n
+                     last_update_block_height < '{1}' AND\n
+                     account_id = '{2}'", deleted_by_receipt_id, last_update_block_height, account_id);
+        run_query!(&pool.clone(), &q);
+    }
+    Ok(())
+}
+
+async fn update_access_keys(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    access_keys_to_update: &Vec<models::access_keys::AccessKey>,
+) -> anyhow::Result<()> {
+    for value in access_keys_to_update {
+        let q = format!(
+            "UPDATE access_keys SET deleted_by_receipt_id = '{0}', last_update_block_height = '{1}'\n
+             WHERE public_key = '{2}' AND\n
+                 last_update_block_height < '{1}' AND\n
+                 account_id = '{3}'", value.deleted_by_receipt_id.as_ref().unwrap_or(&"NULL".to_string()), value.last_update_block_height, value.public_key, value.account_id);
+        run_query!(&pool.clone(), &q);
+    }
+    Ok(())
+}
+
+async fn add_access_keys(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    access_keys_to_insert: &Vec<models::access_keys::AccessKey>,
+) -> anyhow::Result<()> {
+    batch_insert!(
+        &pool.clone(),
+        "INSERT INTO access_keys VALUES {}",
+        access_keys_to_insert
     );
 
-    crate::await_retry_or_panic!(
-        diesel::insert_into(schema::access_keys::table)
-            .values(access_keys_models.clone())
-            .on_conflict_do_nothing()
-            .execute_async(&pool),
-        10,
-        "AccessKeys were stored from genesis".to_string(),
-        &access_keys_models
-    );
+    // TODO we could update the values on rust side and don't abuse the DB with this update
+    for value in access_keys_to_insert {
+        let q = format!(
+            "UPDATE access_keys SET created_by_receipt_id = '{0}', deleted_by_receipt_id = '{1}', last_update_block_height = '{2}'\n
+             WHERE public_key = '{3}' AND\n
+                 last_update_block_height < '{2}' AND\n
+                 account_id = '{4}'",
+            value.created_by_receipt_id.as_ref().unwrap_or(&"NULL".to_string()),
+            value.deleted_by_receipt_id.as_ref().unwrap_or(&"NULL".to_string()),
+            value.last_update_block_height,
+            value.public_key,
+            value.account_id);
+        run_query!(&pool.clone(), &q);
+    }
     Ok(())
 }

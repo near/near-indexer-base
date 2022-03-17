@@ -14,7 +14,7 @@ pub use transactions::Transaction;
 
 pub(crate) use serializers::extract_action_type_and_value_from_action_view;
 
-// pub mod access_keys;
+pub(crate) mod access_keys;
 pub(crate) mod blocks;
 pub(crate) mod chunks;
 pub(crate) mod execution_outcomes;
@@ -22,7 +22,7 @@ pub(crate) mod receipts;
 mod serializers;
 pub(crate) mod transactions;
 
-trait PrintEnum {
+pub(crate) trait PrintEnum {
     fn print(&self) -> &str;
 }
 

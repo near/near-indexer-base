@@ -1,9 +1,11 @@
+// TODO cleanup imports in all the files in the end
 mod db_adapters;
 mod models;
 mod utils;
 
 use cached::SizedCache;
 use dotenv::dotenv;
+use futures::future::try_join_all;
 use futures::{try_join, StreamExt};
 use near_lake_framework::LakeConfig;
 use std::env;
@@ -114,9 +116,21 @@ async fn handle_streamer_message(
         std::sync::Arc::clone(&receipts_cache),
     );
 
+    let access_keys_future = async {
+        let futures = streamer_message.shards.iter().map(|shard| {
+            db_adapters::access_keys::handle_access_keys(
+                pool,
+                &shard.receipt_execution_outcomes,
+                streamer_message.block.header.height,
+            )
+        });
+
+        try_join_all(futures).await.map(|_| ())
+    };
+
     try_join!(blocks_future, chunks_future, transactions_future)?;
     try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
-    try_join!(execution_outcomes_future)?; // this guy thinks that receipts_future finished, and clears the cache
+    try_join!(execution_outcomes_future, access_keys_future)?; // this guy thinks that receipts_future finished, and clears the cache
 
     eprintln!("finished");
     Ok(())

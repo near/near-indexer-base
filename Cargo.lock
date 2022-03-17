@@ -1478,6 +1478,7 @@ dependencies = [
  "futures",
  "hex",
  "itertools 0.9.0",
+ "near-crypto",
  "near-indexer-primitives",
  "near-lake-framework",
  "num-traits",

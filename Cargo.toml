@@ -23,4 +23,5 @@ serde_json = "1.0.55"
 sqlx = { version = "0.5.11", features = ["runtime-tokio-native-tls", "mysql", "bigdecimal"] }
 
 near-indexer-primitives = { git = "https://github.com/near/nearcore", rev = "5f09a3bf042b32d1ff26554433ad6449199ea02a" }
+near-crypto = { git = "https://github.com/near/nearcore", rev = "5f09a3bf042b32d1ff26554433ad6449199ea02a" }
 near-lake-framework = { git = "https://github.com/near/near-lake-framework", rev = "ed73d8552728cb340ce2659f6e94a3f3d5f3f5c0" }

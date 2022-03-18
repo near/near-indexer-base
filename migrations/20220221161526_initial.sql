@@ -19,6 +19,7 @@ CREATE TABLE access_keys
     created_by_receipt_id    text,
     deleted_by_receipt_id    text,
     permission_kind          ENUM ('FULL_ACCESS', 'FUNCTION_CALL') NOT NULL,
+#     TODO get rid about last_update_block_height here also...?
     last_update_block_height numeric(20, 0)                        NOT NULL,
     PRIMARY KEY (public_key, account_id)
 );
@@ -62,6 +63,19 @@ CREATE TABLE access_keys
 #     UNIQUE KEY (account_id),
 #     PRIMARY KEY (id)
 # );
+
+# TODO I think we should store the data about created-deleted-again created accounts
+# TODO last_update_block_height looks confusing for me
+# Proposing this structure
+CREATE TABLE accounts
+(
+    account_id               text           NOT NULL,
+    created_at_block_height  numeric(20, 0) NOT NULL,
+    deleted_at_block_height  numeric(20, 0),
+    created_by_receipt_id    text,
+    deleted_by_receipt_id    text,
+    PRIMARY KEY (account_id, created_at_block_height)
+);
 
 CREATE TABLE action_receipt_actions
 (

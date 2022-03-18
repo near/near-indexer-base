@@ -1,3 +1,4 @@
+// TODO how to store genesis? How it's stored in S3?
 use actix_diesel::Database;
 use diesel::PgConnection;
 

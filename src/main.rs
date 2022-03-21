@@ -76,6 +76,9 @@ async fn handle_streamer_message(
     pool: &sqlx::Pool<sqlx::MySql>,
     receipts_cache: ReceiptsCache,
 ) -> anyhow::Result<()> {
+    // TODO: fault-tolerance
+    // we need to have the ability to write the same block again
+    // we need to fail if something goes wrong
     eprintln!(
         "{} / shards {}",
         streamer_message.block.header.height,

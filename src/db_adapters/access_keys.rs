@@ -18,16 +18,7 @@ pub(crate) async fn handle_access_keys(
     if outcomes.is_empty() {
         return Ok(());
     }
-    let successful_receipts = outcomes
-        .iter()
-        .filter(|outcome_with_receipt| {
-            matches!(
-                outcome_with_receipt.execution_outcome.outcome.status,
-                near_indexer_primitives::views::ExecutionStatusView::SuccessValue(_)
-                    | near_indexer_primitives::views::ExecutionStatusView::SuccessReceiptId(_)
-            )
-        })
-        .map(|outcome_with_receipt| &outcome_with_receipt.receipt);
+    let successful_receipts = models::execution_outcomes::ExecutionOutcome::get_successful_receipts(outcomes);
 
     let mut access_keys = HashMap::<(String, String), models::access_keys::AccessKey>::new();
     let mut deleted_accounts = HashMap::<String, String>::new();

@@ -44,6 +44,19 @@ impl ExecutionOutcome {
             shard_id: shard_id.into(),
         }
     }
+
+    pub fn get_successful_receipts(outcomes: &[near_indexer_primitives::IndexerExecutionOutcomeWithReceipt]) -> {
+        let a = outcomes
+            .iter()
+            .filter(|outcome_with_receipt| {
+                matches!(
+                outcome_with_receipt.execution_outcome.outcome.status,
+                near_indexer_primitives::views::ExecutionStatusView::SuccessValue(_)
+                    | near_indexer_primitives::views::ExecutionStatusView::SuccessReceiptId(_)
+            )
+            })
+            .map(|outcome_with_receipt| &outcome_with_receipt.receipt).collect();
+    }
 }
 
 #[derive(Debug, sqlx::FromRow)]

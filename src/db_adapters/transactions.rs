@@ -44,6 +44,7 @@ async fn store_chunk_transactions(
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
     // hack for supporting duplicated transaction hashes. Empty for most of transactions
+    // TODO it's a rudiment of previous solution. Create the solution again
     transaction_hash_suffix: &str,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {

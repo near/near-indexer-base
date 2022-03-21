@@ -11,19 +11,6 @@
 # be careful with nulls, there's always a possiblity to have default value (empty string), no way to create it separately
 # https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/other-types.html
 
-
-CREATE TABLE access_keys
-(
-    public_key               text                                  NOT NULL,
-    account_id               text                                  NOT NULL,
-    created_by_receipt_id    text,
-    deleted_by_receipt_id    text,
-    permission_kind          ENUM ('FULL_ACCESS', 'FUNCTION_CALL') NOT NULL,
-#     TODO get rid about last_update_block_height here also...?
-    last_update_block_height numeric(20, 0)                        NOT NULL,
-    PRIMARY KEY (public_key, account_id)
-);
-
 # TODO think about this table separately (issues: Unique keys, artificial id)
 # CREATE TABLE account_changes
 # (
@@ -50,32 +37,6 @@ CREATE TABLE access_keys
 #     index_in_block integer NOT NULL,
 #     PRIMARY KEY (id)
 # );
-
-# TODO we have issues with the unique key
-# https://www.singlestore.com/forum/t/creating-table-with-unique-index/1501/3
-# CREATE TABLE accounts
-# (
-#     id BIGINT NOT NULL AUTO_INCREMENT,
-#     account_id               text           NOT NULL,
-#     created_by_receipt_id    text,
-#     deleted_by_receipt_id    text,
-#     last_update_block_height numeric(20, 0) NOT NULL,
-#     UNIQUE KEY (account_id),
-#     PRIMARY KEY (id)
-# );
-
-# TODO I think we should store the data about created-deleted-again created accounts
-# TODO last_update_block_height looks confusing for me
-# Proposing this structure
-CREATE TABLE accounts
-(
-    account_id               text           NOT NULL,
-    created_at_block_height  numeric(20, 0) NOT NULL,
-    deleted_at_block_height  numeric(20, 0),
-    created_by_receipt_id    text,
-    deleted_by_receipt_id    text,
-    PRIMARY KEY (account_id, created_at_block_height)
-);
 
 CREATE TABLE action_receipt_actions
 (
@@ -220,7 +181,7 @@ CREATE TABLE transactions
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
     receipt_conversion_tokens_burnt numeric(45, 0),
-    PRIMARY KEY (transaction_hash, included_in_block_hash)
+    PRIMARY KEY (transaction_hash)
 );
 
 # TODO make the research about indexes

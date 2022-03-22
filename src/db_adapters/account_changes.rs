@@ -1,14 +1,12 @@
-use actix_diesel::dsl::AsyncRunQueryDsl;
-use diesel::PgConnection;
+use crate::{batch_insert, models};
 
-use crate::models;
-use crate::schema;
+use itertools::Itertools;
 
-/// Saves state change related to account to database
+// todo recheck first block on mainnet. Looks like we miss the data in S3
 pub(crate) async fn store_account_changes(
-    pool: &actix_diesel::Database<PgConnection>,
-    state_changes: &[near_indexer::near_primitives::views::StateChangeWithCauseView],
-    block_hash: &near_indexer::near_primitives::hash::CryptoHash,
+    pool: &sqlx::Pool<sqlx::MySql>,
+    state_changes: &near_indexer_primitives::views::StateChangesView,
+    block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
 ) -> anyhow::Result<()> {
     if state_changes.is_empty() {
@@ -28,14 +26,6 @@ pub(crate) async fn store_account_changes(
         })
         .collect();
 
-    crate::await_retry_or_panic!(
-        diesel::insert_into(schema::account_changes::table)
-            .values(account_changes_models.clone())
-            .on_conflict_do_nothing()
-            .execute_async(pool),
-        10,
-        "AccountChanges were stored in database".to_string(),
-        &account_changes_models
-    );
+    batch_insert!(&pool.clone(), "INSERT INTO account_changes VALUES {}", account_changes_models);
     Ok(())
 }

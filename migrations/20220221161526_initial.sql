@@ -11,32 +11,34 @@
 # be careful with nulls, there's always a possiblity to have default value (empty string), no way to create it separately
 # https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/other-types.html
 
-# TODO think about this table separately (issues: Unique keys, artificial id)
-# CREATE TABLE account_changes
-# (
-#     id BIGINT NOT NULL AUTO_INCREMENT,
-#     affected_account_id                text           NOT NULL,
-#     changed_in_block_timestamp         numeric(20, 0) NOT NULL,
-#     changed_in_block_hash              text           NOT NULL,
-#     caused_by_transaction_hash         text,
-#     caused_by_receipt_id               text,
-#     update_reason ENUM (
-#     'TRANSACTION_PROCESSING',
-#     'ACTION_RECEIPT_PROCESSING_STARTED',
-#     'ACTION_RECEIPT_GAS_REWARD',
-#     'RECEIPT_PROCESSING',
-#     'POSTPONED_RECEIPT',
-#     'UPDATED_DELAYED_RECEIPTS',
-#     'VALIDATOR_ACCOUNTS_UPDATE',
-#     'MIGRATION',
-#     'RESHARDING'
-#     ) NOT NULL,
-#     affected_account_nonstaked_balance numeric(45, 0) NOT NULL,
-#     affected_account_staked_balance    numeric(45, 0) NOT NULL,
-#     affected_account_storage_usage     numeric(20, 0) NOT NULL,
-#     index_in_block integer NOT NULL,
-#     PRIMARY KEY (id)
-# );
+# TODO rename the table and the id
+CREATE TABLE account_changes
+(
+#     This value is computed by concatenating all other fields and getting hash from it.
+#     It gives us a unique identifier and the protection from duplicates.
+    account_change_hash                text           NOT NULL,
+    affected_account_id                text           NOT NULL,
+    changed_in_block_timestamp         numeric(20, 0) NOT NULL,
+    changed_in_block_hash              text           NOT NULL,
+    caused_by_transaction_hash         text,
+    caused_by_receipt_id               text,
+    update_reason ENUM (
+    'TRANSACTION_PROCESSING',
+    'ACTION_RECEIPT_PROCESSING_STARTED',
+    'ACTION_RECEIPT_GAS_REWARD',
+    'RECEIPT_PROCESSING',
+    'POSTPONED_RECEIPT',
+    'UPDATED_DELAYED_RECEIPTS',
+    'VALIDATOR_ACCOUNTS_UPDATE',
+    'MIGRATION',
+    'RESHARDING'
+    ) NOT NULL,
+    affected_account_nonstaked_balance numeric(45, 0) NOT NULL,
+    affected_account_staked_balance    numeric(45, 0) NOT NULL,
+    affected_account_storage_usage     numeric(20, 0) NOT NULL,
+    index_in_block integer NOT NULL,
+    PRIMARY KEY (account_change_hash)
+);
 
 CREATE TABLE action_receipt_actions
 (
@@ -234,37 +236,3 @@ CREATE TABLE transactions
 # CREATE INDEX account_changes_sorting_idx ON account_changes (changed_in_block_timestamp, index_in_block);
 # CREATE INDEX action_receipt_actions_receiver_and_timestamp_idx
 #     ON action_receipt_actions (receipt_receiver_account_id, receipt_included_in_block_timestamp);
-
-
-# TODO how to create such unique indexes?
-# CREATE UNIQUE INDEX account_changes_transaction_uni_idx
-#     ON account_changes (
-#                         affected_account_id,
-#                         changed_in_block_hash,
-#                         caused_by_transaction_hash,
-#                         update_reason,
-#                         affected_account_nonstaked_balance,
-#                         affected_account_staked_balance,
-#                         affected_account_storage_usage
-#         ) WHERE caused_by_transaction_hash IS NOT NULL AND caused_by_receipt_id IS NULL;
-#
-# CREATE UNIQUE INDEX account_changes_receipt_uni_idx
-#     ON account_changes (
-#                         affected_account_id,
-#                         changed_in_block_hash,
-#                         caused_by_receipt_id,
-#                         update_reason,
-#                         affected_account_nonstaked_balance,
-#                         affected_account_staked_balance,
-#                         affected_account_storage_usage
-#         ) WHERE caused_by_transaction_hash IS NULL AND caused_by_receipt_id IS NOT NULL;
-#
-# CREATE UNIQUE INDEX account_changes_null_uni_idx
-#     ON account_changes (
-#                         affected_account_id,
-#                         changed_in_block_hash,
-#                         update_reason,
-#                         affected_account_nonstaked_balance,
-#                         affected_account_staked_balance,
-#                         affected_account_storage_usage
-#         ) WHERE caused_by_transaction_hash IS NULL AND caused_by_receipt_id IS NULL;

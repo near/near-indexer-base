@@ -1,15 +1,13 @@
-use std::fmt;
+use std::{fmt, io};
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 
 use crate::models::PrintEnum;
-use std::hash::{Hash, Hasher};
-use near_sdk::borsh::{BorshSerialize, BorshDeserialize};
-// use sha2::Digest;
-// use near_sdk::serde::{Deserialize, Serialize};
+// use near_sdk::borsh::{BorshSerialize, BorshDeserialize};
 
-#[derive(Debug, Hash, BorshSerialize, BorshDeserialize, sqlx::FromRow)]
+// #[derive(Debug, Hash, BorshSerialize, BorshDeserialize, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct AccountChange {
     pub affected_account_id: String,
     pub changed_in_block_timestamp: BigDecimal,
@@ -23,11 +21,6 @@ pub struct AccountChange {
     pub affected_account_storage_usage: BigDecimal,
     pub index_in_block: i32,
 }
-
-// #[derive(Debug, BorshSerialize, BorshDeserialize, Deserialize, Serialize, sqlx::FromRow)]
-// pub struct AccountChange2 {
-//     pub index_in_block: i32,
-// }
 
 impl AccountChange {
     pub fn from_state_change_with_cause(
@@ -92,16 +85,9 @@ impl AccountChange {
     }
 }
 
-// fn calculate_hash<T: Hash>(t: &T) -> near_indexer_primitives::CryptoHash {
-//     let mut hasher = sha2::Sha256::default();
-//     t.hash(&mut hasher);
-//     // hasher.
-//     // BorshSerialize::serialize(t, &mut hasher).unwrap();
-//     near_indexer_primitives::CryptoHash(hasher.finalize().into())
-// }
-
 impl fmt::Display for AccountChange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO
         let hash = ""; //near_indexer_primitives::CryptoHash::hash_borsh(self);
         write!(
             f,

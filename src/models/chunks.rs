@@ -2,7 +2,11 @@ use std::fmt;
 
 use bigdecimal::BigDecimal;
 
-#[derive(Debug, sqlx::FromRow)]
+use avro_rs::{Schema, Writer};
+use serde::Serialize;
+
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct Chunk {
     pub included_in_block_hash: String,
     pub chunk_hash: String,
@@ -27,6 +31,37 @@ impl Chunk {
             gas_used: chunk_view.header.gas_used.into(),
             author_account_id: chunk_view.author.to_string(),
         }
+    }
+
+    pub fn schema() -> Schema {
+        let raw_schema = r#"
+            {
+                "type": "record",
+                "name": "chunk",
+                "fields": [
+                    {"name": "included_in_block_hash", "type": "string"},
+                    {"name": "chunk_hash", "type": "string"},
+                    {"name": "shard_id", "type": "string"},
+                    {"name": "signature", "type": "string"},
+                    {"name": "gas_limit", "type": "string"},
+                    {"name": "gas_used", "type": "string"},
+                    {"name": "author_account_id", "type": "string"}
+                ]
+            }
+        "#;
+        avro_rs::Schema::parse_str(raw_schema).unwrap()
+    }
+
+    pub fn format() -> String {
+        r#"
+            included_in_block_hash <- %::included_in_block_hash,
+            chunk_hash <- %::chunk_hash,
+            shard_id <- %::shard_id,
+            signature <- %::signature,
+            gas_limit <- %::gas_limit,
+            gas_used <- %::gas_used,
+            author_account_id <- %::author_account_id
+        "#.to_string()
     }
 }
 

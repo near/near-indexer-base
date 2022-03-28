@@ -30,7 +30,8 @@ pub type ReceiptsCache =
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
-    let pool = sqlx::MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
+    // let pool = sqlx::MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
+    let pool = mysql_async::Pool::from_url(&env::var("DATABASE_URL")?)?;
     // TODO Error: while executing migrations: error returned from database: 1128 (HY000): Function 'near_indexer.GET_LOCK' is not defined
     // sqlx::migrate!().run(&pool).await?;
 
@@ -43,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
         //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
         s3_bucket_name: "near-lake-data-mainnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 9823031, //9820214, // 9820210 9823031
+        start_block_height: 9820214, //9820214, // 9820210 9823031
     };
     let stream = near_lake_framework::streamer(config);
 
@@ -73,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn handle_streamer_message(
     streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &mysql_async::Pool, //&sqlx::Pool<sqlx::MySql>,
     receipts_cache: ReceiptsCache,
 ) -> anyhow::Result<()> {
     // TODO: fault-tolerance
@@ -88,7 +89,7 @@ async fn handle_streamer_message(
     //     "ReceiptsCache #{} \n {:#?}",
     //     streamer_message.block.header.height, &receipts_cache
     // );
-    let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
+    // let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
     let chunks_future = db_adapters::chunks::store_chunks(
         pool,
@@ -96,45 +97,45 @@ async fn handle_streamer_message(
         &streamer_message.block.header.hash,
     );
 
-    let transactions_future = db_adapters::transactions::store_transactions(
-        pool,
-        &streamer_message.shards,
-        &streamer_message.block.header.hash,
-        streamer_message.block.header.timestamp,
-        std::sync::Arc::clone(&receipts_cache),
-    );
+    // let transactions_future = db_adapters::transactions::store_transactions(
+    //     pool,
+    //     &streamer_message.shards,
+    //     &streamer_message.block.header.hash,
+    //     streamer_message.block.header.timestamp,
+    //     std::sync::Arc::clone(&receipts_cache),
+    // );
+    //
+    // let receipts_future = db_adapters::receipts::store_receipts(
+    //     pool,
+    //     &streamer_message.shards,
+    //     &streamer_message.block.header.hash,
+    //     streamer_message.block.header.timestamp,
+    //     std::sync::Arc::clone(&receipts_cache),
+    // );
 
-    let receipts_future = db_adapters::receipts::store_receipts(
-        pool,
-        &streamer_message.shards,
-        &streamer_message.block.header.hash,
-        streamer_message.block.header.timestamp,
-        std::sync::Arc::clone(&receipts_cache),
-    );
+    // let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
+    //     pool,
+    //     &streamer_message.shards,
+    //     streamer_message.block.header.timestamp,
+    //     std::sync::Arc::clone(&receipts_cache),
+    // );
+    //
+    // let account_changes_future = async {
+    //     let futures = streamer_message.shards.iter().map(|shard| {
+    //         db_adapters::account_changes::store_account_changes(
+    //             pool,
+    //             &shard.state_changes,
+    //             &streamer_message.block.header.hash,
+    //             streamer_message.block.header.timestamp,
+    //         )
+    //     });
+    //
+    //     try_join_all(futures).await.map(|_| ())
+    // };
 
-    let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
-        pool,
-        &streamer_message.shards,
-        streamer_message.block.header.timestamp,
-        std::sync::Arc::clone(&receipts_cache),
-    );
-
-    let account_changes_future = async {
-        let futures = streamer_message.shards.iter().map(|shard| {
-            db_adapters::account_changes::store_account_changes(
-                pool,
-                &shard.state_changes,
-                &streamer_message.block.header.hash,
-                streamer_message.block.header.timestamp,
-            )
-        });
-
-        try_join_all(futures).await.map(|_| ())
-    };
-
-    try_join!(blocks_future, chunks_future, transactions_future)?;
-    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
-    try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
+    try_join!(chunks_future)?; //blocks_future, transactions_future)?;
+    // try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+    // try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
 
     eprintln!("finished");
     Ok(())

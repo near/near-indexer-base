@@ -15,10 +15,13 @@ macro_rules! batch_insert {
 #[macro_export]
 macro_rules! run_query {
     ($pool: expr, $query: expr $(,)?) => {{
+        let mut conn = pool.get_conn().await?;
         // TODO find a better way to communicate with the DB
         eprintln!("{}", $query);
-        sqlx::query($query).execute($pool).await?;
+       // sqlx::query($query).execute($pool).await?;
+        $query.ignore(&mut conn).await?;
         eprintln!("{} finished", $query);
+        drop(conn);
     }};
 }
 

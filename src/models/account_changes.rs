@@ -4,12 +4,8 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 
 use crate::models::PrintEnum;
-use std::hash::{Hash, Hasher};
-use near_sdk::borsh::{BorshSerialize, BorshDeserialize};
-// use sha2::Digest;
-// use near_sdk::serde::{Deserialize, Serialize};
 
-#[derive(Debug, Hash, BorshSerialize, BorshDeserialize, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct AccountChange {
     pub affected_account_id: String,
     pub changed_in_block_timestamp: BigDecimal,
@@ -102,11 +98,9 @@ impl AccountChange {
 
 impl fmt::Display for AccountChange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let hash = ""; //near_indexer_primitives::CryptoHash::hash_borsh(self);
         write!(
             f,
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            hash.to_string(),
+            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
             self.affected_account_id,
             self.changed_in_block_timestamp,
             self.changed_in_block_hash,

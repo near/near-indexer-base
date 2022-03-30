@@ -1,10 +1,5 @@
-#![feature(slice_range)]
-
+// #![feature(slice_range)]
 // TODO cleanup imports in all the files in the end
-mod db_adapters;
-mod models;
-mod utils;
-
 use cached::SizedCache;
 use dotenv::dotenv;
 use futures::future::try_join_all;
@@ -13,6 +8,13 @@ use near_lake_framework::LakeConfig;
 use std::env;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
+
+mod db_adapters;
+mod models;
+
+// Categories for logging
+// TODO naming
+pub(crate) const INDEXER: &str = "indexer";
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ReceiptOrDataId {
@@ -45,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
         s3_bucket_name: "near-lake-data-mainnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 9820210, //9823031, //9820214, // 9820210 9823031
+        start_block_height: 9823031, //9820214, // 9820210 9823031
     };
     let stream = near_lake_framework::streamer(config);
 
@@ -105,38 +107,38 @@ async fn handle_streamer_message(
         streamer_message.block.header.timestamp,
         std::sync::Arc::clone(&receipts_cache),
     );
-    //
-    // let receipts_future = db_adapters::receipts::store_receipts(
-    //     pool,
-    //     &streamer_message.shards,
-    //     &streamer_message.block.header.hash,
-    //     streamer_message.block.header.timestamp,
-    //     std::sync::Arc::clone(&receipts_cache),
-    // );
 
-    // let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
-    //     pool,
-    //     &streamer_message.shards,
-    //     streamer_message.block.header.timestamp,
-    //     std::sync::Arc::clone(&receipts_cache),
-    // );
-    //
-    // let account_changes_future = async {
-    //     let futures = streamer_message.shards.iter().map(|shard| {
-    //         db_adapters::account_changes::store_account_changes(
-    //             pool,
-    //             &shard.state_changes,
-    //             &streamer_message.block.header.hash,
-    //             streamer_message.block.header.timestamp,
-    //         )
-    //     });
-    //
-    //     try_join_all(futures).await.map(|_| ())
-    // };
+    let receipts_future = db_adapters::receipts::store_receipts(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
+
+    let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
+        pool,
+        &streamer_message.shards,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
+
+    let account_changes_future = async {
+        let futures = streamer_message.shards.iter().map(|shard| {
+            db_adapters::account_changes::store_account_changes(
+                pool,
+                &shard.state_changes,
+                &streamer_message.block.header.hash,
+                streamer_message.block.header.timestamp,
+            )
+        });
+
+        try_join_all(futures).await.map(|_| ())
+    };
 
     try_join!(blocks_future, chunks_future, transactions_future)?;
-    // try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
-    // try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
+    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+    try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
 
     eprintln!("finished");
     Ok(())

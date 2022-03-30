@@ -1,4 +1,4 @@
-use crate::{batch_insert, models};
+use crate::models;
 
 use itertools::Itertools;
 
@@ -13,23 +13,31 @@ pub(crate) async fn store_account_changes(
         return Ok(());
     }
 
-    let account_changes_models: Vec<models::account_changes::AccountChange> = state_changes
+    for account_changes_part in &state_changes
         .iter()
-        .enumerate()
-        .filter_map(|(index_in_block, state_change)| {
+        .filter_map(|state_change| {
             models::account_changes::AccountChange::from_state_change_with_cause(
                 state_change,
                 block_hash,
                 block_timestamp,
-                index_in_block as i32,
+                0, // we will fill it later
             )
         })
-        .collect();
+        .enumerate()
+        .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+    {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut changes_count = 0;
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO account_changes VALUES {}",
-        account_changes_models
-    );
+        account_changes_part.for_each(|(i, mut account_change)| {
+            account_change.index_in_block = i as i32;
+            account_change.add_to_args(&mut args);
+            changes_count += 1;
+        });
+
+        let query = models::account_changes::AccountChange::get_query(changes_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
     Ok(())
 }

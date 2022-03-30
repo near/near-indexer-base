@@ -41,10 +41,10 @@ impl Chunk {
     }
 
     pub fn get_query(chunks_count: usize) -> anyhow::Result<String> {
-        return crate::models::create_query_with_placeholders(
+        crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO chunks VALUES",
             chunks_count,
             Chunk::field_count(),
-        );
+        )
     }
 }

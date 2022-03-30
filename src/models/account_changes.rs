@@ -1,29 +1,23 @@
-use std::fmt;
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
+use sqlx::Arguments;
 
-use crate::models::PrintEnum;
+use crate::models::{FieldCount, PrintEnum};
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct AccountChange {
     pub affected_account_id: String,
     pub changed_in_block_timestamp: BigDecimal,
     pub changed_in_block_hash: String,
     pub caused_by_transaction_hash: Option<String>,
     pub caused_by_receipt_id: Option<String>,
-    // TODO
     pub update_reason: String,
     pub affected_account_nonstaked_balance: BigDecimal,
     pub affected_account_staked_balance: BigDecimal,
     pub affected_account_storage_usage: BigDecimal,
     pub index_in_block: i32,
 }
-
-// #[derive(Debug, BorshSerialize, BorshDeserialize, Deserialize, Serialize, sqlx::FromRow)]
-// pub struct AccountChange2 {
-//     pub index_in_block: i32,
-// }
 
 impl AccountChange {
     pub fn from_state_change_with_cause(
@@ -84,36 +78,25 @@ impl AccountChange {
             index_in_block
         })
     }
-}
 
-// fn calculate_hash<T: Hash>(t: &T) -> near_indexer_primitives::CryptoHash {
-//     let mut hasher = sha2::Sha256::default();
-//     t.hash(&mut hasher);
-//     // hasher.
-//     // BorshSerialize::serialize(t, &mut hasher).unwrap();
-//     near_indexer_primitives::CryptoHash(hasher.finalize().into())
-// }
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.affected_account_id);
+        args.add(&self.changed_in_block_timestamp);
+        args.add(&self.changed_in_block_hash);
+        args.add(&self.caused_by_transaction_hash);
+        args.add(&self.caused_by_receipt_id);
+        args.add(&self.update_reason);
+        args.add(&self.affected_account_nonstaked_balance);
+        args.add(&self.affected_account_staked_balance);
+        args.add(&self.affected_account_storage_usage);
+        args.add(&self.index_in_block);
+    }
 
-impl fmt::Display for AccountChange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            self.affected_account_id,
-            self.changed_in_block_timestamp,
-            self.changed_in_block_hash,
-            // TODO "NULL"
-            self.caused_by_transaction_hash
-                .as_ref()
-                .unwrap_or(&"NULL".to_string()),
-            self.caused_by_receipt_id
-                .as_ref()
-                .unwrap_or(&"NULL".to_string()),
-            self.update_reason,
-            self.affected_account_nonstaked_balance,
-            self.affected_account_staked_balance,
-            self.affected_account_storage_usage,
-            self.index_in_block,
+    pub fn get_query(account_changes_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO account_changes VALUES",
+            account_changes_count,
+            AccountChange::field_count(),
         )
     }
 }

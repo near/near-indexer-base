@@ -1,8 +1,7 @@
 use cached::Cached;
 use futures::future::try_join_all;
-use itertools::Itertools;
 
-use crate::{batch_insert, models};
+use crate::models;
 
 pub(crate) async fn store_execution_outcomes(
     pool: &sqlx::Pool<sqlx::MySql>,
@@ -77,20 +76,41 @@ pub async fn store_execution_outcomes_for_chunk(
         );
     }
 
-    // releasing the lock
     drop(receipts_cache_lock);
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO execution_outcomes VALUES {}",
-        outcome_models
-    );
+    for execution_outcomes_part in
+        outcome_models.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+    {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut execution_outcomes_count = 0;
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO execution_outcome_receipts VALUES {}",
-        outcome_receipt_models
-    );
+        execution_outcomes_part
+            .iter()
+            .for_each(|execution_outcome| {
+                execution_outcome.add_to_args(&mut args);
+                execution_outcomes_count += 1;
+            });
+
+        let query =
+            models::execution_outcomes::ExecutionOutcome::get_query(execution_outcomes_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
+    for outcome_receipts_part in
+        outcome_receipt_models.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+    {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut outcome_receipts_count = 0;
+
+        outcome_receipts_part.iter().for_each(|outcome_receipt| {
+            outcome_receipt.add_to_args(&mut args);
+            outcome_receipts_count += 1;
+        });
+
+        let query =
+            models::execution_outcomes::ExecutionOutcomeReceipt::get_query(outcome_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
 
     Ok(())
 }

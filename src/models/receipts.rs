@@ -1,11 +1,11 @@
-use std::convert::TryFrom;
-use std::fmt;
 use std::str::FromStr;
 
-use crate::models::PrintEnum;
 use bigdecimal::BigDecimal;
+use sqlx::Arguments;
 
-#[derive(Debug, sqlx::FromRow)]
+use crate::models::{FieldCount, PrintEnum};
+
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct Receipt {
     pub receipt_id: String,
     pub included_in_block_hash: String,
@@ -14,7 +14,6 @@ pub struct Receipt {
     pub included_in_block_timestamp: BigDecimal,
     pub predecessor_account_id: String,
     pub receiver_account_id: String,
-    // TODO enum
     pub receipt_kind: String,
     pub originated_from_transaction_hash: String,
 }
@@ -40,40 +39,39 @@ impl Receipt {
             included_in_block_timestamp: block_timestamp.into(),
         }
     }
-}
 
-impl fmt::Display for Receipt {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            self.receipt_id,
-            self.included_in_block_hash,
-            self.included_in_chunk_hash,
-            self.index_in_chunk,
-            self.included_in_block_timestamp,
-            self.predecessor_account_id,
-            self.receiver_account_id,
-            self.receipt_kind,
-            self.originated_from_transaction_hash,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.receipt_id);
+        args.add(&self.included_in_block_hash);
+        args.add(&self.included_in_chunk_hash);
+        args.add(&self.index_in_chunk);
+        args.add(&self.included_in_block_timestamp);
+        args.add(&self.predecessor_account_id);
+        args.add(&self.receiver_account_id);
+        args.add(&self.receipt_kind);
+        args.add(&self.originated_from_transaction_hash);
+    }
+
+    pub fn get_query(receipt_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO receipts VALUES",
+            receipt_count,
+            Receipt::field_count(),
         )
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-// #[table_name = "data_receipts"]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct DataReceipt {
     pub data_id: String,
     pub receipt_id: String,
     pub data: Option<Vec<u8>>,
 }
 
-impl TryFrom<&near_indexer_primitives::views::ReceiptView> for DataReceipt {
-    type Error = &'static str;
-
-    fn try_from(
+impl DataReceipt {
+    pub fn try_from_data_receipt_view(
         receipt_view: &near_indexer_primitives::views::ReceiptView,
-    ) -> Result<Self, Self::Error> {
+    ) -> anyhow::Result<Self> {
         if let near_indexer_primitives::views::ReceiptEnumView::Data { data_id, data } =
             &receipt_view.receipt
         {
@@ -83,26 +81,27 @@ impl TryFrom<&near_indexer_primitives::views::ReceiptView> for DataReceipt {
                 data: data.clone(),
             })
         } else {
-            Err("Given ReceiptView is not of Data variant")
+            Err(anyhow::anyhow!("Given ReceiptView is not of Data variant"))
         }
     }
-}
 
-impl fmt::Display for DataReceipt {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{:?}')",
-            self.data_id,
-            self.receipt_id,
-            // TODO handle blobs correctly
-            self.data,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.data_id);
+        args.add(&self.receipt_id);
+        // TODO handle blobs correctly
+        args.add(&self.data);
+    }
+
+    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO data_receipts VALUES",
+            items_count,
+            DataReceipt::field_count(),
         )
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-// #[table_name = "action_receipts"]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceipt {
     pub receipt_id: String,
     pub signer_account_id: String,
@@ -110,12 +109,10 @@ pub struct ActionReceipt {
     pub gas_price: BigDecimal,
 }
 
-impl TryFrom<&near_indexer_primitives::views::ReceiptView> for ActionReceipt {
-    type Error = &'static str;
-
-    fn try_from(
+impl ActionReceipt {
+    pub fn try_from_action_receipt_view(
         receipt_view: &near_indexer_primitives::views::ReceiptView,
-    ) -> Result<Self, Self::Error> {
+    ) -> anyhow::Result<Self> {
         if let near_indexer_primitives::views::ReceiptEnumView::Action {
             signer_id,
             signer_public_key,
@@ -131,27 +128,32 @@ impl TryFrom<&near_indexer_primitives::views::ReceiptView> for ActionReceipt {
                     .expect("gas_price expected to be u128"),
             })
         } else {
-            Err("Given ReceiptView is not of Action variant")
+            Err(anyhow::anyhow!(
+                "Given ReceiptView is not of Action variant"
+            ))
         }
     }
-}
 
-impl fmt::Display for ActionReceipt {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}')",
-            self.receipt_id, self.signer_account_id, self.signer_public_key, self.gas_price,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.receipt_id);
+        args.add(&self.signer_account_id);
+        args.add(&self.signer_public_key);
+        args.add(&self.gas_price);
+    }
+
+    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO action_receipts VALUES",
+            items_count,
+            ActionReceipt::field_count(),
         )
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-// #[table_name = "action_receipt_actions"]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptAction {
     pub receipt_id: String,
     pub index_in_action_receipt: i32,
-    // TODO enum
     pub action_kind: String,
     pub args: serde_json::Value,
     pub receipt_predecessor_account_id: String,
@@ -181,26 +183,29 @@ impl ActionReceiptAction {
             receipt_included_in_block_timestamp: block_timestamp.into(),
         }
     }
-}
 
-impl fmt::Display for ActionReceiptAction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}')",
-            self.receipt_id,
-            self.index_in_action_receipt,
-            self.action_kind,
-            self.args,
-            self.receipt_predecessor_account_id,
-            self.receipt_receiver_account_id,
-            self.receipt_included_in_block_timestamp,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.receipt_id);
+        args.add(&self.index_in_action_receipt);
+        args.add(&self.action_kind);
+        // TODO sqlx::Arguments::add can't work with serde json
+        // args.add(sqlx::types::Json::try_from(&self.args));//&self.args.to_string());
+        args.add(&self.args.to_string());
+        args.add(&self.receipt_predecessor_account_id);
+        args.add(&self.receipt_receiver_account_id);
+        args.add(&self.receipt_included_in_block_timestamp);
+    }
+
+    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO action_receipt_actions VALUES",
+            items_count,
+            ActionReceiptAction::field_count(),
         )
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-// #[table_name = "action_receipt_input_data"]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptInputData {
     pub input_to_receipt_id: String,
     pub input_data_id: String,
@@ -213,20 +218,22 @@ impl ActionReceiptInputData {
             input_data_id: data_id,
         }
     }
-}
 
-impl fmt::Display for ActionReceiptInputData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}')",
-            self.input_to_receipt_id, self.input_data_id,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.input_to_receipt_id);
+        args.add(&self.input_data_id);
+    }
+
+    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO action_receipt_input_data VALUES",
+            items_count,
+            ActionReceiptInputData::field_count(),
         )
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-// #[table_name = "action_receipt_output_data"]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptOutputData {
     pub output_from_receipt_id: String,
     pub output_data_id: String,
@@ -244,14 +251,18 @@ impl ActionReceiptOutputData {
             receiver_account_id: data_receiver.receiver_id.to_string(),
         }
     }
-}
 
-impl fmt::Display for ActionReceiptOutputData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}')",
-            self.output_from_receipt_id, self.output_data_id, self.receiver_account_id,
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.output_from_receipt_id);
+        args.add(&self.output_data_id);
+        args.add(&self.receiver_account_id);
+    }
+
+    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO action_receipt_output_data VALUES",
+            items_count,
+            ActionReceiptOutputData::field_count(),
         )
     }
 }

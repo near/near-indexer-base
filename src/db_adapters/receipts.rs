@@ -1,4 +1,4 @@
-use crate::{batch_insert, models};
+use crate::models;
 use cached::Cached;
 use futures::future::try_join_all;
 use futures::try_join;
@@ -80,7 +80,7 @@ async fn store_chunk_receipts(
                     ))
             } else {
                 warn!(
-                    target: crate::utils::INDEXER,
+                    target: crate::INDEXER,
                     "Skipping Receipt {} as we can't find parent Transaction for it. Happen in block hash {}, chunk hash {}",
                     r.receipt_id.to_string(),
                     block_hash,
@@ -137,7 +137,7 @@ async fn store_chunk_receipts(
     let process_receipt_actions_future =
         store_receipt_actions(pool, action_receipts, block_timestamp);
 
-    let process_receipt_data_future = store_receipt_data(pool, data_receipts);
+    let process_receipt_data_future = store_data_receipts(pool, &data_receipts);
 
     try_join!(process_receipt_actions_future, process_receipt_data_future)?;
     Ok(())
@@ -495,7 +495,18 @@ async fn save_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
     receipts: Vec<models::Receipt>,
 ) -> anyhow::Result<()> {
-    batch_insert!(&pool.clone(), "INSERT INTO receipts VALUES {}", receipts);
+    for receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut receipts_count = 0;
+
+        receipts_part.iter().for_each(|receipt| {
+            receipt.add_to_args(&mut args);
+            receipts_count += 1;
+        });
+
+        let query = models::receipts::Receipt::get_query(receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
     Ok(())
 }
 
@@ -506,7 +517,7 @@ async fn store_receipt_actions(
 ) -> anyhow::Result<()> {
     let receipt_actions: Vec<models::ActionReceipt> = receipts
         .iter()
-        .filter_map(|receipt| models::ActionReceipt::try_from(*receipt).ok())
+        .filter_map(|receipt| models::ActionReceipt::try_from_action_receipt_view(*receipt).ok())
         .collect();
 
     let receipt_action_actions: Vec<models::ActionReceiptAction> = receipts
@@ -573,47 +584,117 @@ async fn store_receipt_actions(
         .flatten()
         .collect();
 
-    // TODO try to rewrite it to collecting futures and try_join_all in the end
     // TODO should we rename the tables? We may do that now (while migration goes) or never
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO action_receipts VALUES {}",
-        receipt_actions
-    );
+    try_join!(
+        store_action_receipts(pool, &receipt_actions),
+        store_action_receipt_actions(pool, &receipt_action_actions),
+        store_action_receipts_input_data(pool, &receipt_action_input_data),
+        store_action_receipts_output_data(pool, &receipt_action_output_data),
+    )?;
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO action_receipt_actions VALUES {}",
-        receipt_action_actions
-    );
-
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO action_receipt_output_data VALUES {}",
-        receipt_action_output_data
-    );
-
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO action_receipt_input_data VALUES {}",
-        receipt_action_input_data
-    );
     Ok(())
 }
 
-async fn store_receipt_data(
+async fn store_action_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: Vec<&near_indexer_primitives::views::ReceiptView>,
+    receipts: &[models::ActionReceipt],
 ) -> anyhow::Result<()> {
-    let receipt_data_models: Vec<models::DataReceipt> = receipts
-        .iter()
-        .filter_map(|receipt| models::DataReceipt::try_from(*receipt).ok())
-        .collect();
+    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut action_receipts_count = 0;
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO data_receipts VALUES {}",
-        receipt_data_models
-    );
+        action_receipts_part.iter().for_each(|action_receipt| {
+            action_receipt.add_to_args(&mut args);
+            action_receipts_count += 1;
+        });
+
+        let query = models::receipts::ActionReceipt::get_query(action_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
+    Ok(())
+}
+
+async fn store_action_receipt_actions(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    receipts: &[models::ActionReceiptAction],
+) -> anyhow::Result<()> {
+    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut action_receipts_count = 0;
+
+        action_receipts_part.iter().for_each(|action_receipt| {
+            action_receipt.add_to_args(&mut args);
+            action_receipts_count += 1;
+        });
+
+        let query = models::receipts::ActionReceiptAction::get_query(action_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
+    Ok(())
+}
+
+async fn store_action_receipts_input_data(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    receipts: &[models::ActionReceiptInputData],
+) -> anyhow::Result<()> {
+    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut action_receipts_count = 0;
+
+        action_receipts_part.iter().for_each(|action_receipt| {
+            action_receipt.add_to_args(&mut args);
+            action_receipts_count += 1;
+        });
+
+        let query = models::receipts::ActionReceiptInputData::get_query(action_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
+    Ok(())
+}
+
+async fn store_action_receipts_output_data(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    receipts: &[models::ActionReceiptOutputData],
+) -> anyhow::Result<()> {
+    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut action_receipts_count = 0;
+
+        action_receipts_part.iter().for_each(|action_receipt| {
+            action_receipt.add_to_args(&mut args);
+            action_receipts_count += 1;
+        });
+
+        let query = models::receipts::ActionReceiptOutputData::get_query(action_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
+    Ok(())
+}
+
+async fn store_data_receipts(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    receipts: &[&near_indexer_primitives::views::ReceiptView],
+) -> anyhow::Result<()> {
+    for data_receipts_part in &receipts
+        .iter()
+        .filter_map(|receipt| models::DataReceipt::try_from_data_receipt_view(*receipt).ok())
+        .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+    {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut data_receipts_count = 0;
+
+        data_receipts_part.for_each(|data_receipt| {
+            data_receipt.add_to_args(&mut args);
+            data_receipts_count += 1;
+        });
+
+        let query = models::receipts::DataReceipt::get_query(data_receipts_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
+
     Ok(())
 }

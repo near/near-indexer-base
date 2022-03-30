@@ -11,33 +11,42 @@
 # be careful with nulls, there's always a possiblity to have default value (empty string), no way to create it separately
 # https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/other-types.html
 
+# TODO get rid of enums at all
 # TODO rename the table and the id
 CREATE TABLE account_changes
 (
 #     This value is computed by concatenating all other fields and getting hash from it.
 #     It gives us a unique identifier and the protection from duplicates.
-    account_change_hash                text           NOT NULL,
     affected_account_id                text           NOT NULL,
     changed_in_block_timestamp         numeric(20, 0) NOT NULL,
     changed_in_block_hash              text           NOT NULL,
     caused_by_transaction_hash         text,
     caused_by_receipt_id               text,
-    update_reason ENUM (
-    'TRANSACTION_PROCESSING',
-    'ACTION_RECEIPT_PROCESSING_STARTED',
-    'ACTION_RECEIPT_GAS_REWARD',
-    'RECEIPT_PROCESSING',
-    'POSTPONED_RECEIPT',
-    'UPDATED_DELAYED_RECEIPTS',
-    'VALIDATOR_ACCOUNTS_UPDATE',
-    'MIGRATION',
-    'RESHARDING'
-    ) NOT NULL,
+#     update_reason options:
+#     'TRANSACTION_PROCESSING',
+#     'ACTION_RECEIPT_PROCESSING_STARTED',
+#     'ACTION_RECEIPT_GAS_REWARD',
+#     'RECEIPT_PROCESSING',
+#     'POSTPONED_RECEIPT',
+#     'UPDATED_DELAYED_RECEIPTS',
+#     'VALIDATOR_ACCOUNTS_UPDATE',
+#     'MIGRATION',
+#     'RESHARDING'
+    update_reason                      text           NOT NULL,
     affected_account_nonstaked_balance numeric(45, 0) NOT NULL,
     affected_account_staked_balance    numeric(45, 0) NOT NULL,
     affected_account_storage_usage     numeric(20, 0) NOT NULL,
     index_in_block integer NOT NULL,
-    PRIMARY KEY (account_change_hash)
+    SHARD KEY (affected_account_id, changed_in_block_hash),
+    SORT KEY (changed_in_block_timestamp, index_in_block),
+    UNIQUE KEY (affected_account_id,
+                changed_in_block_hash,
+                caused_by_transaction_hash,
+                caused_by_receipt_id,
+                update_reason,
+                affected_account_nonstaked_balance,
+                affected_account_staked_balance,
+                affected_account_storage_usage)
 );
 
 CREATE TABLE action_receipt_actions

@@ -1,4 +1,3 @@
-use std::fmt;
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
@@ -18,8 +17,6 @@ pub struct Transaction {
     pub nonce: BigDecimal,
     pub receiver_account_id: String,
     pub signature: String,
-    // TODO it's enum, handle the enums properly
-    // TODO we need to fail if we try to insert the value not in the enum, DB will not help us here
     pub status: String,
     pub converted_into_receipt_id: String,
     pub receipt_conversion_gas_burnt: BigDecimal,
@@ -87,10 +84,10 @@ impl Transaction {
     }
 
     pub fn get_query(transactions_count: usize) -> anyhow::Result<String> {
-        return crate::models::create_query_with_placeholders(
+        crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO transactions VALUES",
             transactions_count,
             Transaction::field_count(),
-        );
+        )
     }
 }

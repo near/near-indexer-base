@@ -49,12 +49,15 @@ async fn store_chunk_transactions(
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
     // Processing by parts to avoid huge bulk insert statements
-    for transaction_part in &transactions.iter().chunks(crate::utils::INSERT_CHUNK_SIZE) {
+    for transactions_part in &transactions
+        .iter()
+        .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+    {
         let mut args = sqlx::mysql::MySqlArguments::default();
         let mut transaction_count = 0;
         let mut receipts_cache_lock = receipts_cache.lock().await;
 
-        transaction_part.for_each(|(index, tx)| {
+        transactions_part.for_each(|(index, tx)| {
             let transaction_hash = tx.transaction.hash.to_string() + transaction_hash_suffix;
             let converted_into_receipt_id = tx
                 .outcome

@@ -1,10 +1,11 @@
-use std::fmt;
 use std::str::FromStr;
 
-use crate::models::PrintEnum;
 use bigdecimal::BigDecimal;
+use sqlx::Arguments;
 
-#[derive(Debug, sqlx::FromRow)]
+use crate::models::{FieldCount, PrintEnum};
+
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ExecutionOutcome {
     pub receipt_id: String,
     // TODO do we want to add block_height additionally? It could be helpful and it's cheap
@@ -17,7 +18,6 @@ pub struct ExecutionOutcome {
     pub gas_burnt: BigDecimal,
     pub tokens_burnt: BigDecimal,
     pub executor_account_id: String,
-    // TODO enums
     pub status: String,
     pub shard_id: BigDecimal,
 }
@@ -44,39 +44,47 @@ impl ExecutionOutcome {
             shard_id: shard_id.into(),
         }
     }
+
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.receipt_id);
+        args.add(&self.executed_in_block_hash);
+        args.add(&self.executed_in_block_timestamp);
+        args.add(&self.index_in_chunk);
+        args.add(&self.gas_burnt);
+        args.add(&self.tokens_burnt);
+        args.add(&self.executor_account_id);
+        args.add(&self.status);
+        args.add(&self.shard_id);
+    }
+
+    pub fn get_query(execution_outcome_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO execution_outcomes VALUES",
+            execution_outcome_count,
+            ExecutionOutcome::field_count(),
+        )
+    }
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ExecutionOutcomeReceipt {
     pub executed_receipt_id: String,
     pub index_in_execution_outcome: i32,
     pub produced_receipt_id: String,
 }
 
-impl fmt::Display for ExecutionOutcome {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            self.receipt_id,
-            self.executed_in_block_hash,
-            self.executed_in_block_timestamp,
-            self.index_in_chunk,
-            self.gas_burnt,
-            self.tokens_burnt,
-            self.executor_account_id,
-            self.status,
-            self.shard_id,
-        )
+impl ExecutionOutcomeReceipt {
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.executed_receipt_id);
+        args.add(&self.index_in_execution_outcome);
+        args.add(&self.produced_receipt_id);
     }
-}
 
-impl fmt::Display for ExecutionOutcomeReceipt {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}')",
-            self.executed_receipt_id, self.index_in_execution_outcome, self.produced_receipt_id,
+    pub fn get_query(execution_outcome_receipt_count: usize) -> anyhow::Result<String> {
+        crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO execution_outcome_receipts VALUES",
+            execution_outcome_receipt_count,
+            ExecutionOutcomeReceipt::field_count(),
         )
     }
 }

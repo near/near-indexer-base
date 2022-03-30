@@ -42,10 +42,10 @@ impl Block {
     }
 
     pub fn get_query(blocks_count: usize) -> anyhow::Result<String> {
-        return crate::models::create_query_with_placeholders(
+        crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO blocks VALUES",
             blocks_count,
             Block::field_count(),
-        );
+        )
     }
 }

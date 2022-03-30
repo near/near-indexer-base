@@ -1,28 +1,28 @@
 use crate::models;
-use crate::db_adapters::create_query_with_placeholders;
+use itertools::Itertools;
 
 pub(crate) async fn store_chunks(
     pool: &sqlx::Pool<sqlx::MySql>,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
 ) -> anyhow::Result<()> {
-    if shards.is_empty() {
-        return Ok(())
-    }
-
-    let mut args = sqlx::mysql::MySqlArguments::default();
-    let mut chunks_count = 0;
-
-    shards // : Vec<models::chunks::Chunk>
+    // Processing by parts to avoid huge bulk insert statements
+    for chunk_part in &shards
         .iter()
         .filter_map(|shard| shard.chunk.as_ref())
-        .for_each(|chunk| {
-            models::chunks::Chunk::add_to_args(chunk, block_hash, &mut args);
+        .chunks(crate::utils::INSERT_CHUNK_SIZE)
+    {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut chunks_count = 0;
+
+        chunk_part.for_each(|chunk| {
+            models::chunks::Chunk::from_chunk_view(chunk, block_hash).add_to_args(&mut args);
             chunks_count += 1;
         });
 
-    let query = create_query_with_placeholders("INSERT IGNORE INTO chunks VALUES", chunks_count, models::chunks::Chunk::fields_count())?;
-    sqlx::query_with(&query, args).execute(pool).await?;
+        let query = models::chunks::Chunk::get_query(chunks_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
 
     Ok(())
 }

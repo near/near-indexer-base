@@ -1,35 +1,13 @@
-use crate::{batch_insert, models};
+use crate::models;
 
-use itertools::Itertools;
-
-use sqlx::{Arguments, Execute};
-/// Saves block to database
 pub(crate) async fn store_block(
     pool: &sqlx::Pool<sqlx::MySql>,
     block: &near_indexer_primitives::views::BlockView,
 ) -> anyhow::Result<()> {
-    // let block_model = models::blocks::Block::from(block);
-    // // TODO now it fails if it tries to insert already inserted line. Think how to act better
-    // batch_insert!(
-    //     &pool.clone(),
-    //     "INSERT INTO blocks VALUES {}",
-    //     vec![&block_model]
-    // );
-
-
-    // let res = sqlx::query("INSERT INTO aaa VALUES (42)").execute(pool).await;
-    //
-    // // create table aaa (a integer not null);
-    // let mut args = sqlx::mysql::MySqlArguments::default();
-    // let mut query = "INSERT INTO aaa VALUES ($1)".to_owned();
-    // args.add(422);
-    // let res2 = sqlx::query_with(&query, args).execute(pool).await;
-    //
-    // let res = sqlx::query("INSERT INTO aaa VALUES ($1)").bind(42).execute(pool).await;
-    //
-    //
-
-
+    let mut args = sqlx::mysql::MySqlArguments::default();
+    models::blocks::Block::from_block_view(block).add_to_args(&mut args);
+    let query = models::blocks::Block::get_query(1)?;
+    sqlx::query_with(&query, args).execute(pool).await?;
     Ok(())
 }
 

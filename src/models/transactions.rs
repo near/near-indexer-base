@@ -2,10 +2,11 @@ use std::fmt;
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
+use sqlx::Arguments;
 
-use crate::models::PrintEnum;
+use crate::models::{FieldCount, PrintEnum};
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct Transaction {
     pub transaction_hash: String,
     pub included_in_block_hash: String,
@@ -67,27 +68,29 @@ impl Transaction {
             .expect("`token_burnt` must be u128"),
         }
     }
-}
 
-impl fmt::Display for Transaction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
-            self.transaction_hash,
-            self.included_in_block_hash,
-            self.included_in_chunk_hash,
-            self.index_in_chunk,
-            self.block_timestamp,
-            self.signer_account_id,
-            self.signer_public_key,
-            self.nonce,
-            self.receiver_account_id,
-            self.signature,
-            self.status,
-            self.converted_into_receipt_id,
-            self.receipt_conversion_gas_burnt,
-            self.receipt_conversion_tokens_burnt,
-        )
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.transaction_hash);
+        args.add(&self.included_in_block_hash);
+        args.add(&self.included_in_chunk_hash);
+        args.add(&self.index_in_chunk);
+        args.add(&self.block_timestamp);
+        args.add(&self.signer_account_id);
+        args.add(&self.signer_public_key);
+        args.add(&self.nonce);
+        args.add(&self.receiver_account_id);
+        args.add(&self.signature);
+        args.add(&self.status);
+        args.add(&self.converted_into_receipt_id);
+        args.add(&self.receipt_conversion_gas_burnt);
+        args.add(&self.receipt_conversion_tokens_burnt);
+    }
+
+    pub fn get_query(transactions_count: usize) -> anyhow::Result<String> {
+        return crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO transactions VALUES",
+            transactions_count,
+            Transaction::field_count(),
+        );
     }
 }

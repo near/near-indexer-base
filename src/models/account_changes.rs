@@ -35,19 +35,17 @@ impl AccountChange {
         let near_indexer_primitives::views::StateChangeWithCauseView { cause, value } =
             state_change_with_cause;
 
-        let (account_id, account): (
-            String,
-            Option<&near_indexer_primitives::views::AccountView>,
-        ) = match value {
-            near_indexer_primitives::views::StateChangeValueView::AccountUpdate {
-                account_id,
-                account,
-            } => (account_id.to_string(), Some(account)),
-            near_indexer_primitives::views::StateChangeValueView::AccountDeletion {
-                account_id,
-            } => (account_id.to_string(), None),
-            _ => return None,
-        };
+        let (account_id, account): (String, Option<&near_indexer_primitives::views::AccountView>) =
+            match value {
+                near_indexer_primitives::views::StateChangeValueView::AccountUpdate {
+                    account_id,
+                    account,
+                } => (account_id.to_string(), Some(account)),
+                near_indexer_primitives::views::StateChangeValueView::AccountDeletion {
+                    account_id,
+                } => (account_id.to_string(), None),
+                _ => return None,
+            };
 
         Some(Self {
             affected_account_id: account_id,
@@ -105,9 +103,11 @@ impl fmt::Display for AccountChange {
             self.changed_in_block_timestamp,
             self.changed_in_block_hash,
             // TODO "NULL"
-            self.caused_by_transaction_hash.as_ref()
+            self.caused_by_transaction_hash
+                .as_ref()
                 .unwrap_or(&"NULL".to_string()),
-            self.caused_by_receipt_id.as_ref()
+            self.caused_by_receipt_id
+                .as_ref()
                 .unwrap_or(&"NULL".to_string()),
             self.update_reason,
             self.affected_account_nonstaked_balance,

@@ -2,9 +2,8 @@ use cached::Cached;
 use futures::future::try_join_all;
 use itertools::Itertools;
 
-use crate::{batch_insert, models};
+use crate::models;
 
-/// Saves Transactions to database
 pub(crate) async fn store_transactions(
     pool: &sqlx::Pool<sqlx::MySql>,
     shards: &[near_indexer_primitives::IndexerShard],
@@ -15,6 +14,7 @@ pub(crate) async fn store_transactions(
     let tx_futures = shards
         .iter()
         .filter_map(|shard| shard.chunk.as_ref())
+        .filter(|chunk| !chunk.transactions.is_empty())
         .map(|chunk| {
             store_chunk_transactions(
                 pool,
@@ -48,11 +48,13 @@ async fn store_chunk_transactions(
     transaction_hash_suffix: &str,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
-    let mut receipts_cache_lock = receipts_cache.lock().await;
+    // Processing by parts to avoid huge bulk insert statements
+    for transaction_part in &transactions.iter().chunks(crate::utils::INSERT_CHUNK_SIZE) {
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut transaction_count = 0;
+        let mut receipts_cache_lock = receipts_cache.lock().await;
 
-    let transaction_models: Vec<models::Transaction> = transactions
-        .iter()
-        .map(|(index, tx)| {
+        transaction_part.for_each(|(index, tx)| {
             let transaction_hash = tx.transaction.hash.to_string() + transaction_hash_suffix;
             let converted_into_receipt_id = tx
                 .outcome
@@ -81,16 +83,15 @@ async fn store_chunk_transactions(
                 block_timestamp,
                 *index as i32,
             )
-        })
-        .collect();
+            .add_to_args(&mut args);
+            transaction_count += 1;
+        });
+        // releasing the lock
+        drop(receipts_cache_lock);
 
-    // releasing the lock
-    drop(receipts_cache_lock);
+        let query = models::transactions::Transaction::get_query(transaction_count)?;
+        sqlx::query_with(&query, args).execute(pool).await?;
+    }
 
-    batch_insert!(
-        &pool.clone(),
-        "INSERT INTO transactions VALUES {}",
-        transaction_models
-    );
     Ok(())
 }

@@ -25,3 +25,5 @@ macro_rules! run_query {
 // Categories for logging
 // TODO naming
 pub(crate) const INDEXER: &str = "indexer";
+
+pub(crate) const INSERT_CHUNK_SIZE: usize = 100;

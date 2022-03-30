@@ -7,10 +7,10 @@ mod utils;
 
 use cached::SizedCache;
 use dotenv::dotenv;
+use futures::future::try_join_all;
 use futures::{try_join, StreamExt};
 use near_lake_framework::LakeConfig;
 use std::env;
-use futures::future::try_join_all;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
@@ -98,13 +98,13 @@ async fn handle_streamer_message(
         &streamer_message.block.header.hash,
     );
 
-    // let transactions_future = db_adapters::transactions::store_transactions(
-    //     pool,
-    //     &streamer_message.shards,
-    //     &streamer_message.block.header.hash,
-    //     streamer_message.block.header.timestamp,
-    //     std::sync::Arc::clone(&receipts_cache),
-    // );
+    let transactions_future = db_adapters::transactions::store_transactions(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
+        std::sync::Arc::clone(&receipts_cache),
+    );
     //
     // let receipts_future = db_adapters::receipts::store_receipts(
     //     pool,
@@ -134,8 +134,7 @@ async fn handle_streamer_message(
     //     try_join_all(futures).await.map(|_| ())
     // };
 
-    try_join!(blocks_future, chunks_future)?;
-    // try_join!(blocks_future, chunks_future, transactions_future)?;
+    try_join!(blocks_future, chunks_future, transactions_future)?;
     // try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
     // try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
 

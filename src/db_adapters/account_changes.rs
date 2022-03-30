@@ -26,6 +26,10 @@ pub(crate) async fn store_account_changes(
         })
         .collect();
 
-    batch_insert!(&pool.clone(), "INSERT INTO account_changes VALUES {}", account_changes_models);
+    batch_insert!(
+        &pool.clone(),
+        "INSERT INTO account_changes VALUES {}",
+        account_changes_models
+    );
     Ok(())
 }

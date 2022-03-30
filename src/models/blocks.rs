@@ -1,9 +1,11 @@
-use std::fmt;
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
+use sqlx::Arguments;
 
-#[derive(Debug, sqlx::FromRow)]
+use crate::models::FieldCount;
+
+#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct Block {
     pub block_height: BigDecimal,
     pub block_hash: String,
@@ -14,8 +16,8 @@ pub struct Block {
     pub author_account_id: String,
 }
 
-impl From<&near_indexer_primitives::views::BlockView> for Block {
-    fn from(block_view: &near_indexer_primitives::views::BlockView) -> Self {
+impl Block {
+    pub fn from_block_view(block_view: &near_indexer_primitives::views::BlockView) -> Self {
         Self {
             block_height: block_view.header.height.into(),
             block_hash: block_view.header.hash.to_string(),
@@ -28,23 +30,22 @@ impl From<&near_indexer_primitives::views::BlockView> for Block {
             author_account_id: block_view.author.to_string(),
         }
     }
-}
 
-// TODO do not abuse display
-// TODO I need to escape each field here. Next developer can forget about it.
-// It's better to make it in a one place. Create the small library for it? :)
-impl fmt::Display for Block {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "('{}','{}','{}','{}','{}','{}','{}')",
-            self.block_height,
-            self.block_hash,
-            self.prev_block_hash,
-            self.block_timestamp,
-            self.total_supply,
-            self.gas_price,
-            self.author_account_id
-        )
+    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.block_height);
+        args.add(&self.block_hash);
+        args.add(&self.prev_block_hash);
+        args.add(&self.block_timestamp);
+        args.add(&self.total_supply);
+        args.add(&self.gas_price);
+        args.add(&self.author_account_id);
+    }
+
+    pub fn get_query(blocks_count: usize) -> anyhow::Result<String> {
+        return crate::models::create_query_with_placeholders(
+            "INSERT IGNORE INTO blocks VALUES",
+            blocks_count,
+            Block::field_count(),
+        );
     }
 }

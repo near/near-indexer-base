@@ -20,6 +20,8 @@
 -- todo should I add this column to the shard key?
 -- todo should we create this? it's the part of sort key
 -- TODO discuss indexes on json fields
+-- todo check blob columns (false?)
+-- todo is it ok to put json as strings (it works but I guess it is slower than it could be)
 
 -- update_reason options:
 --     {
@@ -94,6 +96,7 @@ CREATE TABLE action_receipt_actions
     KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH -- todo should I add this column to the shard key?
 
 -- TODO discuss indexes on json fields
+-- https://docs.singlestore.com/db/v7.6/en/create-your-database/physical-database-schema-design/procedures-for-physical-database-schema-design/using-json.html#indexing-data-in-json-columns
 -- CREATE INDEX action_receipt_actions_args_function_call_idx ON action_receipt_actions ((args ->> 'method_name')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL';
 -- CREATE INDEX action_receipt_actions_args_receiver_id_idx ON action_receipt_actions ((args -> 'args_json' ->> 'receiver_id')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL' AND
 --           (action_receipt_actions.args ->> 'args_json') IS NOT NULL;

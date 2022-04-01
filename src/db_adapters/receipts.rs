@@ -2,9 +2,11 @@ use crate::models;
 use cached::Cached;
 use futures::future::try_join_all;
 use futures::try_join;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use num_traits::FromPrimitive;
+use sqlx::{Arguments, Row};
 use std::collections::HashMap;
+use std::str::FromStr;
 use tracing::warn;
 
 /// Saves receipts to database
@@ -147,6 +149,7 @@ async fn store_chunk_receipts(
 async fn find_tx_hashes_for_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
     mut receipts: Vec<near_indexer_primitives::views::ReceiptView>,
+    // TODO we need to add sort of retry logic, these vars could be helpful
     block_hash: &near_indexer_primitives::CryptoHash,
     chunk_hash: &near_indexer_primitives::CryptoHash,
     receipts_cache: crate::ReceiptsCache,
@@ -195,300 +198,182 @@ async fn find_tx_hashes_for_receipts(
         }
     });
 
-    if !receipts.is_empty() {
-        panic!("temp solution, receipts should be empty here");
+    if receipts.is_empty() {
+        return Ok(tx_hashes_for_receipts);
     }
-    Ok(tx_hashes_for_receipts)
 
-    // TODO we still need the logic with getting info from DB
-    // if receipts.is_empty() {
-    //     return Ok(tx_hashes_for_receipts);
-    // }
-    //
-    // warn!(
-    //     target: crate::utils::INDEXER,
-    //     "Looking for parent transaction hash in database for {} receipts {:#?}",
-    //     &receipts.len(),
-    //     &receipts,
-    // );
-    //
-    // let mut retries_left: u8 = 4; // retry at least times even in no-strict mode to avoid data loss
-    // let mut find_tx_retry_interval = crate::INTERVAL;
-    // loop {
-    //     let data_receipt_ids: Vec<String> = receipts
-    //         .iter()
-    //         .filter_map(|r| match r.receipt {
-    //             near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
-    //                 Some(data_id.to_string())
-    //             }
-    //             _ => None,
-    //         })
-    //         .collect();
-    //
-    //     if !data_receipt_ids.is_empty() {
-    //         let mut interval = crate::utils::INTERVAL;
-    //         let tx_hashes_for_data_id_via_data_output: Vec<(
-    //             crate::ReceiptOrDataId,
-    //             crate::ParentTransactionHashString,
-    //         )> = loop {
-    //             let account = sqlx::query!(
-    //     // just pretend "accounts" is a real table
-    //     "select * from (select (1) as id, 'Herp Derpinson' as name) accounts where id = ?",
-    //     1i32
-    // )
-    //                 .fetch_one(&mut conn)
-    //                 .await?;
-    //
-    //
-    //             let a = r#"
-    //                 SELECT action_receipt_output_data.output_data_id, receipts.originated_from_transaction_hash
-    //                 FROM action_receipt_output_data JOIN receipts ON action_receipt_output_data.output_from_receipt_id = receipts.receipt_id
-    //                 WHERE action_receipt_output_data.output_data_id IN ${data_receipt_ids}
-    //             "#;
-    //             match schema::action_receipt_output_data::table
-    //                 .inner_join(
-    //                     schema::receipts::table.on(
-    //                         schema::action_receipt_output_data::dsl::output_from_receipt_id
-    //                             .eq(schema::receipts::dsl::receipt_id),
-    //                     ),
-    //                 )
-    //                 .filter(
-    //                     schema::action_receipt_output_data::dsl::output_data_id
-    //                         .eq(any(data_receipt_ids.clone())),
-    //                 )
-    //                 .select((
-    //                     schema::action_receipt_output_data::dsl::output_data_id,
-    //                     schema::receipts::dsl::originated_from_transaction_hash,
-    //                 ))
-    //                 .load_async(pool)
-    //                 .await
-    //             {
-    //                 Ok(res) => {
-    //                     break res
-    //                         .into_iter()
-    //                         .map(
-    //                             |(receipt_id_string, transaction_hash_string): (String, String)| {
-    //                                 (
-    //                                     crate::ReceiptOrDataId::DataId( // NEW FIX!
-    //                                         near_indexer_primitives::CryptoHash::from_str(
-    //                                             &receipt_id_string,
-    //                                         )
-    //                                             .expect("Failed to convert String to CryptoHash"),
-    //                                     ),
-    //                                     transaction_hash_string,
-    //                                 )
-    //                             },
-    //                         )
-    //                         .collect();
-    //                 }
-    //                 Err(async_error) => {
-    //                     error!(
-    //                         target: crate::utils::INDEXER,
-    //                         "Error occurred while fetching the parent receipt for Receipt. Retrying in {} milliseconds... \n {:#?}",
-    //                         interval.as_millis(),
-    //                         async_error,
-    //                     );
-    //                     tokio::time::sleep(interval).await;
-    //                     if interval < crate::MAX_DELAY_TIME {
-    //                         interval *= 2;
-    //                     }
-    //                 }
-    //             }
-    //         };
-    //     } // this one should not be here
-    //         panic!("temp solution");
-    //
-    //
-    //
-    //         let mut tx_hashes_for_data_id_via_data_output_hashmap =
-    //             HashMap::<crate::ReceiptOrDataId, crate::ParentTransactionHashString>::new();
-    //         tx_hashes_for_data_id_via_data_output_hashmap
-    //             .extend(tx_hashes_for_data_id_via_data_output);
-    //         let tx_hashes_for_receipts_via_data_output: Vec<(
-    //             crate::ReceiptOrDataId,
-    //             crate::ParentTransactionHashString,
-    //         )> = receipts
-    //             .iter()
-    //             .filter_map(|r| match r.receipt {
-    //                 near_indexer_primitives::views::ReceiptEnumView::Data {
-    //                     data_id, ..
-    //                 } => tx_hashes_for_data_id_via_data_output_hashmap
-    //                     .get(&crate::ReceiptOrDataId::DataId(data_id))
-    //                     .map(|tx_hash| {
-    //                         (
-    //                             crate::ReceiptOrDataId::ReceiptId(r.receipt_id),
-    //                             tx_hash.to_string(),
-    //                         )
-    //                     }),
-    //                 _ => None,
-    //             })
-    //             .collect();
-    //
-    //         let found_hashes_len = tx_hashes_for_receipts_via_data_output.len();
-    //         tx_hashes_for_receipts.extend(tx_hashes_for_receipts_via_data_output);
-    //
-    //         if found_hashes_len == receipts.len() {
-    //             break;
-    //         }
-    //
-    //         receipts.retain(|r| {
-    //             !tx_hashes_for_receipts
-    //                 .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
-    //         });
-    //     }
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //
-    //     let a = r#"
-    //                 SELECT execution_outcome_receipts.produced_receipt_id, receipts.originated_from_transaction_hash
-    //                 FROM execution_outcome_receipts JOIN receipts ON execution_outcome_receipts.executed_receipt_id = receipts.receipt_id
-    //                 WHERE execution_outcome_receipts.produced_receipt_id IN ${action_receipts}
-    //             "#;
-    //     let tx_hashes_for_receipts_via_outcomes: Vec<(String, crate::ParentTransactionHashString)> =
-    //         crate::await_retry_or_panic!(
-    //             schema::execution_outcome_receipts::table
-    //                 .inner_join(
-    //                     schema::receipts::table
-    //                         .on(schema::execution_outcome_receipts::dsl::executed_receipt_id
-    //                             .eq(schema::receipts::dsl::receipt_id)),
-    //                 )
-    //                 .filter(
-    //                     schema::execution_outcome_receipts::dsl::produced_receipt_id.eq(any(
-    //                         receipts
-    //                             .clone()
-    //                             .iter()
-    //                             .filter(|r| {
-    //                                 matches!(
-    //                             r.receipt,
-    //                             near_indexer::near_primitives::views::ReceiptEnumView::Action { .. }
-    //                         )
-    //                             })
-    //                             .map(|r| r.receipt_id.to_string())
-    //                             .collect::<Vec<String>>()
-    //                     )),
-    //                 )
-    //                 .select((
-    //                     schema::execution_outcome_receipts::dsl::produced_receipt_id,
-    //                     schema::receipts::dsl::originated_from_transaction_hash,
-    //                 ))
-    //                 .load_async::<(String, crate::ParentTransactionHashString)>(pool),
-    //             10,
-    //             "Parent Transaction for Receipts were fetched".to_string(),
-    //             &receipts
-    //         )
-    //         .unwrap_or_default();
-    //
-    //     let found_hashes_len = tx_hashes_for_receipts_via_outcomes.len();
-    //     tx_hashes_for_receipts.extend(tx_hashes_for_receipts_via_outcomes.into_iter().map(
-    //         |(receipt_id_string, transaction_hash_string)| {
-    //             (
-    //                 crate::ReceiptOrDataId::ReceiptId(
-    //                     near_primitives::hash::CryptoHash::from_str(&receipt_id_string)
-    //                         .expect("Failed to convert String to CryptoHash"),
-    //                 ),
-    //                 transaction_hash_string,
-    //             )
-    //         },
-    //     ));
-    //
-    //     if found_hashes_len == receipts.len() {
-    //         break;
-    //     }
-    //
-    //     receipts.retain(|r| {
-    //         !tx_hashes_for_receipts.contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
-    //     });
-    //
-    //
-    //
-    //
-    //     let a = r#"
-    //                 SELECT converted_into_receipt_id, transaction_hash
-    //                 FROM transactions
-    //                 WHERE converted_into_receipt_id IN ${action_receipts}
-    //             "#;
-    //     let tx_hashes_for_receipt_via_transactions: Vec<(
-    //         String,
-    //         crate::ParentTransactionHashString,
-    //     )> = crate::await_retry_or_panic!(
-    //         schema::transactions::table
-    //             .filter(
-    //                 schema::transactions::dsl::converted_into_receipt_id.eq(any(receipts
-    //                     .clone()
-    //                     .iter()
-    //                     .filter(|r| {
-    //                         matches!(
-    //                             r.receipt,
-    //                             near_indexer::near_primitives::views::ReceiptEnumView::Action { .. }
-    //                         )
-    //                     })
-    //                     .map(|r| r.receipt_id.to_string())
-    //                     .collect::<Vec<String>>())),
-    //             )
-    //             .select((
-    //                 schema::transactions::dsl::converted_into_receipt_id,
-    //                 schema::transactions::dsl::transaction_hash,
-    //             ))
-    //             .load_async::<(String, crate::ParentTransactionHashString)>(pool),
-    //         10,
-    //         "Parent Transaction for ExecutionOutcome were fetched".to_string(),
-    //         &receipts
-    //     )
-    //     .unwrap_or_default();
-    //
-    //     let found_hashes_len = tx_hashes_for_receipt_via_transactions.len();
-    //     tx_hashes_for_receipts.extend(tx_hashes_for_receipt_via_transactions.into_iter().map(
-    //         |(receipt_id_string, transaction_hash_string)| {
-    //             (
-    //                 crate::ReceiptOrDataId::ReceiptId(
-    //                     near_primitives::hash::CryptoHash::from_str(&receipt_id_string)
-    //                         .expect("Failed to convert String to CryptoHash"),
-    //                 ),
-    //                 transaction_hash_string,
-    //             )
-    //         },
-    //     ));
-    //
-    //     //////////
-    //
-    //
-    //
-    //     if found_hashes_len == receipts.len() {
-    //         break;
-    //     }
-    //
-    //     receipts.retain(|r| {
-    //         !tx_hashes_for_receipts.contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
-    //     });
-    //
-    //     if !strict_mode {
-    //         if retries_left > 0 {
-    //             retries_left -= 1;
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     warn!(
-    //         target: crate::utils::INDEXER,
-    //         "Going to retry to find parent transactions for receipts in {} milliseconds... \n {:#?}\n block hash {} \nchunk hash {}",
-    //         find_tx_retry_interval.as_millis(),
-    //         &receipts,
-    //         block_hash,
-    //         chunk_hash
-    //     );
-    //     tokio::time::sleep(find_tx_retry_interval).await;
-    //     if find_tx_retry_interval < crate::MAX_DELAY_TIME {
-    //         find_tx_retry_interval *= 2;
-    //     }
-    // }
-    //
-    // Ok(tx_hashes_for_receipts)
+    warn!(
+        target: crate::INDEXER,
+        "Looking for parent transaction hash in database for {} receipts {:#?}",
+        &receipts.len(),
+        &receipts,
+    );
+
+    let (action_receipt_ids, data_ids): (Vec<String>, Vec<String>) =
+        receipts.iter().partition_map(|r| match r.receipt {
+            near_indexer_primitives::views::ReceiptEnumView::Action { .. } => {
+                Either::Left(r.receipt_id.to_string())
+            }
+            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
+                Either::Right(data_id.to_string())
+            }
+        });
+
+    if !data_ids.is_empty() {
+        let tx_hashes_for_data_receipts =
+            find_transaction_hashes_for_data_receipts(pool, &data_ids, &receipts).await?;
+        tx_hashes_for_receipts.extend(tx_hashes_for_data_receipts.clone());
+
+        receipts.retain(|r| {
+            !tx_hashes_for_data_receipts
+                .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+        });
+        if receipts.is_empty() {
+            return Ok(tx_hashes_for_receipts);
+        }
+    }
+
+    let tx_hashes_for_receipts_via_outcomes =
+        find_transaction_hashes_for_receipts_via_outcomes(pool, &action_receipt_ids).await?;
+    tx_hashes_for_receipts.extend(tx_hashes_for_receipts_via_outcomes.clone());
+
+    receipts.retain(|r| {
+        !tx_hashes_for_receipts_via_outcomes
+            .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+    });
+    if receipts.is_empty() {
+        return Ok(tx_hashes_for_receipts);
+    }
+
+    let tx_hashes_for_receipt_via_transactions =
+        find_transaction_hashes_for_receipt_via_transactions(pool, &action_receipt_ids).await?;
+    tx_hashes_for_receipts.extend(tx_hashes_for_receipt_via_transactions.clone());
+
+    receipts.retain(|r| {
+        !tx_hashes_for_receipt_via_transactions
+            .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+    });
+    if !receipts.is_empty() {
+        panic!("all the transactions should be found by this place");
+    }
+
+    Ok(tx_hashes_for_receipts)
+}
+
+async fn find_transaction_hashes_for_data_receipts(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    data_ids: &[String],
+    receipts: &[near_indexer_primitives::views::ReceiptView],
+) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
+    let query = "SELECT action_receipt_output_data.output_data_id, receipts.originated_from_transaction_hash
+                        FROM action_receipt_output_data JOIN receipts ON action_receipt_output_data.output_from_receipt_id = receipts.receipt_id
+                        WHERE action_receipt_output_data.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
+    let mut args = sqlx::mysql::MySqlArguments::default();
+    data_ids.iter().for_each(|data_id| {
+        args.add(data_id);
+    });
+
+    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
+
+    let tx_hashes_for_data_id_via_data_output_hashmap: HashMap<
+        crate::ReceiptOrDataId,
+        crate::ParentTransactionHashString,
+    > = res
+        .iter()
+        .map(|q| (q.get(0), q.get(1)))
+        .map(
+            |(receipt_id_string, transaction_hash_string): (String, String)| {
+                (
+                    crate::ReceiptOrDataId::DataId(
+                        near_indexer_primitives::CryptoHash::from_str(&receipt_id_string)
+                            .expect("Failed to convert String to CryptoHash"),
+                    ),
+                    transaction_hash_string,
+                )
+            },
+        )
+        .collect();
+
+    Ok(receipts
+        .iter()
+        .filter_map(|r| match r.receipt {
+            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
+                tx_hashes_for_data_id_via_data_output_hashmap
+                    .get(&crate::ReceiptOrDataId::DataId(data_id))
+                    .map(|tx_hash| {
+                        (
+                            crate::ReceiptOrDataId::ReceiptId(r.receipt_id),
+                            tx_hash.to_string(),
+                        )
+                    })
+            }
+            _ => None,
+        })
+        .collect())
+}
+
+async fn find_transaction_hashes_for_receipts_via_outcomes(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    action_receipt_ids: &[String],
+) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
+    let query = "SELECT execution_outcome_receipts.produced_receipt_id, receipts.originated_from_transaction_hash
+                        FROM execution_outcome_receipts JOIN receipts ON execution_outcome_receipts.executed_receipt_id = receipts.receipt_id
+                        WHERE execution_outcome_receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(action_receipt_ids.len())?;
+    let mut args = sqlx::mysql::MySqlArguments::default();
+    action_receipt_ids.iter().for_each(|data_id| {
+        args.add(data_id);
+    });
+
+    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
+
+    Ok(res
+        .iter()
+        .map(|q| (q.get(0), q.get(1)))
+        .map(
+            |(receipt_id_string, transaction_hash_string): (String, String)| {
+                (
+                    crate::ReceiptOrDataId::ReceiptId(
+                        near_indexer_primitives::CryptoHash::from_str(&receipt_id_string)
+                            .expect("Failed to convert String to CryptoHash"),
+                    ),
+                    transaction_hash_string,
+                )
+            },
+        )
+        .collect())
+}
+
+async fn find_transaction_hashes_for_receipt_via_transactions(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    action_receipt_ids: &[String],
+) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
+    let query = "SELECT converted_into_receipt_id, transaction_hash
+                        FROM transactions
+                        WHERE converted_into_receipt_id IN "
+        .to_owned()
+        + &crate::models::create_placeholder(action_receipt_ids.len())?;
+    let mut args = sqlx::mysql::MySqlArguments::default();
+    action_receipt_ids.iter().for_each(|data_id| {
+        args.add(data_id);
+    });
+
+    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
+
+    Ok(res
+        .iter()
+        .map(|q| (q.get(0), q.get(1)))
+        .map(
+            |(receipt_id_string, transaction_hash_string): (String, String)| {
+                (
+                    crate::ReceiptOrDataId::ReceiptId(
+                        near_indexer_primitives::CryptoHash::from_str(&receipt_id_string)
+                            .expect("Failed to convert String to CryptoHash"),
+                    ),
+                    transaction_hash_string,
+                )
+            },
+        )
+        .collect())
 }
 
 async fn save_receipts(

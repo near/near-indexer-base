@@ -27,15 +27,30 @@ pub trait FieldCount {
 fn create_query_with_placeholders(
     query: &str,
     mut items_count: usize,
-    mut fields_count: usize,
+    fields_count: usize,
 ) -> anyhow::Result<String> {
-    if items_count < 1 || fields_count < 1 {
-        return Err(anyhow::anyhow!(
-            "At least 1 item expected with at least 1 field inside"
-        ));
+    if items_count < 1 {
+        return Err(anyhow::anyhow!("At least 1 item expected"));
     }
 
-    // Generating `(?, ?, ?)`
+    let placeholder = create_placeholder(fields_count)?;
+    // Generates `INSERT INTO table VALUES (?, ?, ?), (?, ?, ?)`
+    let mut res = query.to_owned() + " " + &placeholder;
+    items_count -= 1;
+    while items_count > 0 {
+        res += ", ";
+        res += &placeholder;
+        items_count -= 1;
+    }
+
+    Ok(res)
+}
+
+// Generates `(?, ?, ?)`
+pub fn create_placeholder(mut fields_count: usize) -> anyhow::Result<String> {
+    if fields_count < 1 {
+        return Err(anyhow::anyhow!("At least 1 field expected"));
+    }
     let mut item = "(?".to_owned();
     fields_count -= 1;
     while fields_count > 0 {
@@ -43,17 +58,7 @@ fn create_query_with_placeholders(
         fields_count -= 1;
     }
     item += ")";
-
-    // Generating `INSERT INTO table VALUES (?, ?, ?), (?, ?, ?)`
-    let mut res = query.to_owned() + " " + &item;
-    items_count -= 1;
-    while items_count > 0 {
-        res += ", ";
-        res += &item;
-        items_count -= 1;
-    }
-
-    Ok(res)
+    Ok(item)
 }
 
 pub(crate) trait PrintEnum {

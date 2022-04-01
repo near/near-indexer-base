@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
         s3_bucket_name: "near-lake-data-mainnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 9823031, //9820214, // 9820210 9823031
+        start_block_height: 12117825, //9823031, //9820214, // 9820210 9823031 12117827 data receipt
     };
     let stream = near_lake_framework::streamer(config);
 

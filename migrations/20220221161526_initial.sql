@@ -81,14 +81,13 @@ CREATE TABLE action_receipt_actions
     -- TODO add the column
     index_in_block integer        NOT NULL,
 
-    SHARD KEY (affected_account_id, changed_in_block_hash),
+    SHARD KEY (receipt_id),
     SORT KEY (receipt_included_in_block_timestamp, index_in_block),
     UNIQUE KEY (receipt_id, index_in_action_receipt),
     KEY (action_kind) USING HASH,
     KEY (receipt_predecessor_account_id) USING HASH,
     KEY (receipt_receiver_account_id) USING HASH,
     KEY (receipt_included_in_block_timestamp) USING HASH,
-    KEY (action_kind) USING HASH,
     KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH
 
 -- TODO discuss indexes on json fields
@@ -262,7 +261,6 @@ CREATE TABLE execution_outcomes
     SORT KEY (executed_in_block_timestamp, index_in_block),
     UNIQUE KEY (receipt_id),
     KEY (executed_in_block_timestamp) USING HASH,
-    KEY (executed_in_chunk_hash) USING HASH,
     KEY (executed_in_block_hash) USING HASH,
     KEY (status) USING HASH
 );

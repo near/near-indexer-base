@@ -188,8 +188,6 @@ impl ActionReceiptAction {
         args.add(&self.receipt_id);
         args.add(&self.index_in_action_receipt);
         args.add(&self.action_kind);
-        // TODO sqlx::Arguments::add can't work with serde json
-        // args.add(sqlx::types::Json::try_from(&self.args));//&self.args.to_string());
         args.add(&self.args.to_string());
         args.add(&self.receipt_predecessor_account_id);
         args.add(&self.receipt_receiver_account_id);

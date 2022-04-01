@@ -469,7 +469,6 @@ async fn store_receipt_actions(
         .flatten()
         .collect();
 
-    // TODO should we rename the tables? We may do that now (while migration goes) or never
     try_join!(
         store_action_receipts(pool, &receipt_actions),
         store_action_receipt_actions(pool, &receipt_action_actions),

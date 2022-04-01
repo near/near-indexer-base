@@ -8,11 +8,7 @@ use crate::models::{FieldCount, PrintEnum};
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ExecutionOutcome {
     pub receipt_id: String,
-    // TODO do we want to add block_height additionally? It could be helpful and it's cheap
-    // Height is a little bit more human readable than timestamp
     pub executed_in_block_hash: String,
-    // TODO don't we want to rename all such fields so that they have the same naming? It will simplify the work for our users
-    // Once a week I help others to get rid of unnecessary joins in their queries. Good consistent naming could help the users
     pub executed_in_block_timestamp: BigDecimal,
     pub index_in_chunk: i32,
     pub gas_burnt: BigDecimal,

@@ -11,17 +11,7 @@
 -- - all the columns in hash keys should also be in shard key
 -- - we don't use enum type because it' not allowed to use enums in keys
 
--- TODO get rid of enums at all
--- TODO rename the table and the id
-
-
--- meta list of todos for the discussion with Carl (there are many duplicates further)
--- todo will it work fine? it's bigger than just timestamp (stronger condition)
--- todo should I add this column to the shard key?
--- todo should we create this? it's the part of sort key
--- TODO discuss indexes on json fields
--- todo check blob columns (false?)
--- todo is it ok to put json as strings (it works but I guess it is slower than it could be)
+-- TODO rename the tables and the fields
 
 -- update_reason options:
 --     {
@@ -48,7 +38,8 @@ CREATE TABLE account_changes
     affected_account_storage_usage     numeric(20, 0) NOT NULL,
     index_in_block integer NOT NULL,
     SHARD KEY (affected_account_id, changed_in_block_hash),
-    SORT KEY (changed_in_block_timestamp, index_in_block), -- todo will it work fine? it's bigger than just timestamp (stronger condition)
+    SORT KEY (changed_in_block_timestamp, index_in_block),
+--     TODO actually, we can use sort key as unique key (we do so in action_receipt_actions)
     UNIQUE KEY (affected_account_id,
                 changed_in_block_hash,
                 caused_by_transaction_hash,
@@ -59,9 +50,9 @@ CREATE TABLE account_changes
                 affected_account_storage_usage),
     KEY (affected_account_id) USING HASH,
     KEY (changed_in_block_hash) USING HASH,
-    KEY (changed_in_block_timestamp) USING HASH, -- todo should we create this? it's the part of sort key -- todo should I add this column to the shard key?
-    KEY (caused_by_receipt_id) USING HASH, -- todo should I add this column to the shard key?
-    KEY (caused_by_transaction_hash) USING HASH -- todo should I add this column to the shard key?
+    KEY (changed_in_block_timestamp) USING HASH,
+    KEY (caused_by_receipt_id) USING HASH,
+    KEY (caused_by_transaction_hash) USING HASH
 );
 
 -- action_kind options:
@@ -78,6 +69,7 @@ CREATE TABLE account_changes
 CREATE TABLE action_receipt_actions
 (
     receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
     index_in_action_receipt             integer        NOT NULL,
     action_kind                         text           NOT NULL,
     args                                json           NOT NULL,
@@ -85,15 +77,19 @@ CREATE TABLE action_receipt_actions
     receipt_receiver_account_id         text           NOT NULL,
     receipt_included_in_block_timestamp numeric(20, 0) NOT NULL,
 
-   -- SHARD KEY (affected_account_id, changed_in_block_hash),
-    SORT KEY (receipt_included_in_block_timestamp, index_in_action_receipt), -- todo will it work fine? it's bigger than just timestamp (stronger condition)
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (affected_account_id, changed_in_block_hash),
+    SORT KEY (receipt_included_in_block_timestamp, index_in_block),
     UNIQUE KEY (receipt_id, index_in_action_receipt),
-    KEY (action_kind) USING HASH, -- todo should I add this column to the shard key?
-    KEY (receipt_predecessor_account_id) USING HASH, -- todo should I add this column to the shard key?
-    KEY (receipt_receiver_account_id) USING HASH, -- todo should I add this column to the shard key?
-    KEY (receipt_included_in_block_timestamp) USING HASH, -- todo should I add this column to the shard key? -- todo should we create this? it's the part of sort key
-    KEY (action_kind) USING HASH, -- todo should I add this column to the shard key?
-    KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH -- todo should I add this column to the shard key?
+    KEY (action_kind) USING HASH,
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (receipt_included_in_block_timestamp) USING HASH,
+    KEY (action_kind) USING HASH,
+    KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH
 
 -- TODO discuss indexes on json fields
 -- https://docs.singlestore.com/db/v7.6/en/create-your-database/physical-database-schema-design/procedures-for-physical-database-schema-design/using-json.html#indexing-data-in-json-columns
@@ -109,17 +105,15 @@ CREATE TABLE action_receipt_input_data
 
 -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    receipt_included_in_block_timestamp numeric(20, 0) NOT NULL,
+    block_timestamp numeric(20, 0) NOT NULL,
     -- TODO add the column
-    index_in_receipt integer        NOT NULL,
-
+    index_in_block integer        NOT NULL,
 
     SHARD KEY (input_to_receipt_id),
-    SORT KEY (receipt_included_in_block_timestamp, index_in_receipt), -- todo will it work fine? it's bigger than just timestamp (stronger condition)
+    SORT KEY (block_timestamp, index_in_block),
     UNIQUE KEY (input_data_id, input_to_receipt_id),
-    KEY (input_data_id) USING HASH, -- todo should I add this column to the shard key?
-    KEY (input_to_receipt_id) USING HASH,
-
+    KEY (input_data_id) USING HASH,
+    KEY (input_to_receipt_id) USING HASH
 );
 
 CREATE TABLE action_receipt_output_data
@@ -127,7 +121,19 @@ CREATE TABLE action_receipt_output_data
     output_data_id         text NOT NULL,
     output_from_receipt_id text NOT NULL,
     receiver_account_id    text NOT NULL,
-    PRIMARY KEY (output_data_id, output_from_receipt_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    block_timestamp numeric(20, 0) NOT NULL,
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (output_from_receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (output_data_id, output_from_receipt_id),
+    KEY (output_data_id) USING HASH,
+    KEY (output_from_receipt_id) USING HASH,
+    KEY (receiver_account_id) USING HASH
 );
 
 CREATE TABLE action_receipts
@@ -136,7 +142,17 @@ CREATE TABLE action_receipts
     signer_account_id text           NOT NULL,
     signer_public_key text           NOT NULL,
     gas_price         numeric(45, 0) NOT NULL,
-    PRIMARY KEY (receipt_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    block_timestamp numeric(20, 0) NOT NULL,
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id),
+    KEY (signer_account_id) USING HASH
 );
 
 CREATE TABLE blocks
@@ -148,7 +164,13 @@ CREATE TABLE blocks
     total_supply      numeric(45, 0) NOT NULL,
     gas_price         numeric(45, 0) NOT NULL,
     author_account_id text           NOT NULL,
-    PRIMARY KEY (block_hash)
+
+    SHARD KEY (block_hash),
+    SORT KEY (block_timestamp),
+    UNIQUE KEY (block_hash),
+    KEY (block_height) USING HASH,
+    KEY (prev_block_hash) USING HASH,
+    KEY (block_timestamp) USING HASH
 );
 
 CREATE TABLE chunks
@@ -160,68 +182,137 @@ CREATE TABLE chunks
     gas_limit              numeric(20, 0) NOT NULL,
     gas_used               numeric(20, 0) NOT NULL,
     author_account_id      text           NOT NULL,
-    PRIMARY KEY (chunk_hash)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    block_timestamp numeric(20, 0) NOT NULL,
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (chunk_hash),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (chunk_hash),
+    KEY (included_in_block_hash) USING HASH
 );
 
+-- TODO do we want to use MEDIUMBLOB or VARBINARY?
 -- https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/blob-types.html
 CREATE TABLE data_receipts
 (
     data_id    text NOT NULL,
     receipt_id text NOT NULL,
     data       blob,
-    PRIMARY KEY (data_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    block_timestamp numeric(20, 0) NOT NULL,
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (data_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (data_id),
+    KEY (receipt_id) USING HASH
 );
 
 CREATE TABLE execution_outcome_receipts
 (
     executed_receipt_id        text    NOT NULL,
+    --     TODO we can drop it since we have index_in_block
     index_in_execution_outcome integer NOT NULL,
     produced_receipt_id        text    NOT NULL,
-    PRIMARY KEY (executed_receipt_id, index_in_execution_outcome, produced_receipt_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    block_timestamp numeric(20, 0) NOT NULL,
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (executed_receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (executed_receipt_id, index_in_execution_outcome, produced_receipt_id),
+    KEY (produced_receipt_id) USING HASH
 );
 
+-- status options:
+--      {
+--         'UNKNOWN',
+--         'FAILURE',
+--         'SUCCESS_VALUE',
+--         'SUCCESS_RECEIPT_ID'
+--      }
 CREATE TABLE execution_outcomes
 (
     receipt_id                  text           NOT NULL,
     executed_in_block_hash      text           NOT NULL,
     executed_in_block_timestamp numeric(20, 0) NOT NULL,
+--     TODO we can drop it since we have index_in_block
     index_in_chunk              integer        NOT NULL,
     gas_burnt                   numeric(20, 0) NOT NULL,
     tokens_burnt                numeric(45, 0) NOT NULL,
     executor_account_id         text           NOT NULL,
-    status                      ENUM (
-        'UNKNOWN',
-        'FAILURE',
-        'SUCCESS_VALUE',
-        'SUCCESS_RECEIPT_ID'
-        )                                      NOT NULL,
+    status                      text           NOT NULL,
     shard_id                    numeric(20, 0) NOT NULL,
-    PRIMARY KEY (receipt_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (executed_in_block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id),
+    KEY (executed_in_block_timestamp) USING HASH,
+    KEY (executed_in_chunk_hash) USING HASH,
+    KEY (executed_in_block_hash) USING HASH,
+    KEY (status) USING HASH
 );
 
+-- receipt_kind options:
+--      {
+--         'ACTION',
+--         'DATA'
+--      }
 CREATE TABLE receipts
 (
     receipt_id                       text           NOT NULL,
     included_in_block_hash           text           NOT NULL,
     included_in_chunk_hash           text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
     index_in_chunk                   integer        NOT NULL,
     included_in_block_timestamp      numeric(20, 0) NOT NULL,
     predecessor_account_id           text           NOT NULL,
     receiver_account_id              text           NOT NULL,
-    receipt_kind                     ENUM (
-        'ACTION',
-        'DATA'
-        )                                           NOT NULL,
+    receipt_kind                     text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
-    PRIMARY KEY (receipt_id)
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (included_in_block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id),
+    KEY (included_in_block_hash) USING HASH,
+    KEY (included_in_chunk_hash) USING HASH,
+    KEY (predecessor_account_id) USING HASH,
+    KEY (receiver_account_id) USING HASH,
+    KEY (included_in_block_timestamp) USING HASH,
+    KEY (originated_from_transaction_hash) USING HASH
 );
 
--- TODO decided to use compound primary key here, need to discuss it
+-- status options:
+--      {
+--         'UNKNOWN',
+--         'FAILURE',
+--         'SUCCESS_VALUE',
+--         'SUCCESS_RECEIPT_ID'
+--      }
 CREATE TABLE transactions
 (
     transaction_hash                text           NOT NULL,
     included_in_block_hash          text           NOT NULL,
     included_in_chunk_hash          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
     index_in_chunk                  integer        NOT NULL,
     block_timestamp                 numeric(20, 0) NOT NULL,
     signer_account_id               text           NOT NULL,
@@ -229,48 +320,23 @@ CREATE TABLE transactions
     nonce                           numeric(20, 0) NOT NULL,
     receiver_account_id             text           NOT NULL,
     signature                       text           NOT NULL,
-    status                          ENUM (
-        'UNKNOWN',
-        'FAILURE',
-        'SUCCESS_VALUE',
-        'SUCCESS_RECEIPT_ID'
-        )                                          NOT NULL,
+    status                          text           NOT NULL,
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
     receipt_conversion_tokens_burnt numeric(45, 0),
-    PRIMARY KEY (transaction_hash)
-);
 
--- TODO make the research about indexes
--- CREATE INDEX access_keys_account_id_idx ON access_keys USING btree (account_id);
--- CREATE INDEX access_keys_last_update_block_height_idx ON access_keys USING btree (last_update_block_height);
--- CREATE INDEX access_keys_public_key_idx ON access_keys USING btree (public_key);
--- CREATE INDEX accounts_last_update_block_height_idx ON accounts USING btree (last_update_block_height);
--- CREATE INDEX action_receipt_output_data_output_data_id_idx ON action_receipt_output_data USING btree (output_data_id);
--- CREATE INDEX action_receipt_output_data_output_from_receipt_id_idx ON action_receipt_output_data USING btree (output_from_receipt_id);
--- CREATE INDEX action_receipt_output_data_receiver_account_id_idx ON action_receipt_output_data USING btree (receiver_account_id);
--- CREATE INDEX action_receipt_signer_account_id_idx ON action_receipts USING btree (signer_account_id);
--- CREATE INDEX blocks_height_idx ON blocks USING btree (block_height);
--- CREATE INDEX blocks_prev_hash_idx ON blocks USING btree (prev_block_hash);
--- CREATE INDEX blocks_timestamp_idx ON blocks USING btree (block_timestamp);
--- CREATE INDEX chunks_included_in_block_hash_idx ON chunks USING btree (included_in_block_hash);
--- CREATE INDEX data_receipts_receipt_id_idx ON data_receipts USING btree (receipt_id);
--- CREATE INDEX execution_outcome_executed_in_block_timestamp ON execution_outcomes USING btree (executed_in_block_timestamp);
--- CREATE INDEX execution_outcome_executed_in_chunk_hash_idx ON execution_outcomes USING btree (executed_in_chunk_hash);
--- CREATE INDEX execution_outcome_receipts_produced_receipt_id ON execution_outcome_receipts USING btree (produced_receipt_id);
--- CREATE INDEX execution_outcomes_block_hash_idx ON execution_outcomes USING btree (executed_in_block_hash);
--- CREATE INDEX receipts_included_in_block_hash_idx ON receipts USING btree (included_in_block_hash);
--- CREATE INDEX receipts_included_in_chunk_hash_idx ON receipts USING btree (included_in_chunk_hash);
--- CREATE INDEX receipts_predecessor_account_id_idx ON receipts USING btree (predecessor_account_id);
--- CREATE INDEX receipts_receiver_account_id_idx ON receipts USING btree (receiver_account_id);
--- CREATE INDEX receipts_timestamp_idx ON receipts USING btree (included_in_block_timestamp);
--- CREATE INDEX transactions_converted_into_receipt_id_dx ON transactions USING btree (converted_into_receipt_id);
--- CREATE INDEX transactions_included_in_block_hash_idx ON transactions USING btree (included_in_block_hash);
--- CREATE INDEX transactions_included_in_block_timestamp_idx ON transactions USING btree (block_timestamp);
--- CREATE INDEX transactions_included_in_chunk_hash_idx ON transactions USING btree (included_in_chunk_hash);
--- CREATE INDEX transactions_signer_account_id_idx ON transactions USING btree (signer_account_id);
--- CREATE INDEX transactions_signer_public_key_idx ON transactions USING btree (signer_public_key);
--- CREATE INDEX receipts_originated_from_transaction_hash_idx ON receipts (originated_from_transaction_hash);
--- CREATE INDEX transactions_receiver_account_id_idx ON transactions (receiver_account_id);
--- CREATE INDEX transactions_sorting_idx ON transactions (block_timestamp, index_in_chunk);
--- CREATE INDEX execution_outcomes_status_idx ON execution_outcomes (status);
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block integer        NOT NULL,
+
+    SHARD KEY (transaction_hash),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (transaction_hash),
+    KEY (converted_into_receipt_id) USING HASH,
+    KEY (included_in_block_hash) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (included_in_chunk_hash) USING HASH,
+    KEY (signer_account_id) USING HASH,
+    KEY (signer_public_key) USING HASH,
+    KEY (receiver_account_id) USING HASH
+);

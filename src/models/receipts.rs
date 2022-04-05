@@ -3,80 +3,43 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use sqlx::Arguments;
 
-use crate::models::{FieldCount, PrintEnum};
+use crate::models::FieldCount;
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
-pub struct Receipt {
+pub struct DataReceipt {
     pub receipt_id: String,
     pub included_in_block_hash: String,
     pub included_in_chunk_hash: String,
-    pub index_in_chunk: i32,
+    pub receipt_index_in_chunk: i32,
     pub included_in_block_timestamp: BigDecimal,
     pub predecessor_account_id: String,
     pub receiver_account_id: String,
-    pub receipt_kind: String,
     pub originated_from_transaction_hash: String,
+    pub data_id: String,
+    pub data: Option<Vec<u8>>,
 }
 
-impl Receipt {
-    pub fn from_receipt_view(
+impl DataReceipt {
+    pub fn try_from_data_receipt_view(
         receipt: &near_indexer_primitives::views::ReceiptView,
         block_hash: &near_indexer_primitives::CryptoHash,
         transaction_hash: &str,
         chunk_hash: &near_indexer_primitives::CryptoHash,
         index_in_chunk: i32,
         block_timestamp: u64,
-    ) -> Self {
-        Self {
-            receipt_id: receipt.receipt_id.to_string(),
-            included_in_block_hash: block_hash.to_string(),
-            included_in_chunk_hash: chunk_hash.to_string(),
-            predecessor_account_id: receipt.predecessor_id.to_string(),
-            receiver_account_id: receipt.receiver_id.to_string(),
-            receipt_kind: receipt.receipt.print().to_string(),
-            originated_from_transaction_hash: transaction_hash.to_string(),
-            index_in_chunk,
-            included_in_block_timestamp: block_timestamp.into(),
-        }
-    }
-
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
-        args.add(&self.receipt_id);
-        args.add(&self.included_in_block_hash);
-        args.add(&self.included_in_chunk_hash);
-        args.add(&self.index_in_chunk);
-        args.add(&self.included_in_block_timestamp);
-        args.add(&self.predecessor_account_id);
-        args.add(&self.receiver_account_id);
-        args.add(&self.receipt_kind);
-        args.add(&self.originated_from_transaction_hash);
-    }
-
-    pub fn get_query(receipt_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO receipts VALUES",
-            receipt_count,
-            Receipt::field_count(),
-        )
-    }
-}
-
-#[derive(Debug, sqlx::FromRow, FieldCount)]
-pub struct DataReceipt {
-    pub data_id: String,
-    pub receipt_id: String,
-    pub data: Option<Vec<u8>>,
-}
-
-impl DataReceipt {
-    pub fn try_from_data_receipt_view(
-        receipt_view: &near_indexer_primitives::views::ReceiptView,
     ) -> anyhow::Result<Self> {
         if let near_indexer_primitives::views::ReceiptEnumView::Data { data_id, data } =
-            &receipt_view.receipt
+            &receipt.receipt
         {
             Ok(Self {
-                receipt_id: receipt_view.receipt_id.to_string(),
+                receipt_id: receipt.receipt_id.to_string(),
+                included_in_block_hash: block_hash.to_string(),
+                included_in_chunk_hash: chunk_hash.to_string(),
+                predecessor_account_id: receipt.predecessor_id.to_string(),
+                receiver_account_id: receipt.receiver_id.to_string(),
+                originated_from_transaction_hash: transaction_hash.to_string(),
+                receipt_index_in_chunk: index_in_chunk,
+                included_in_block_timestamp: block_timestamp.into(),
                 data_id: data_id.to_string(),
                 data: data.clone(),
             })
@@ -86,9 +49,15 @@ impl DataReceipt {
     }
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
-        args.add(&self.data_id);
         args.add(&self.receipt_id);
-        // TODO handle blobs correctly
+        args.add(&self.included_in_block_hash);
+        args.add(&self.included_in_chunk_hash);
+        args.add(&self.receipt_index_in_chunk);
+        args.add(&self.included_in_block_timestamp);
+        args.add(&self.predecessor_account_id);
+        args.add(&self.receiver_account_id);
+        args.add(&self.originated_from_transaction_hash);
+        args.add(&self.data_id);
         args.add(&self.data);
     }
 
@@ -104,6 +73,13 @@ impl DataReceipt {
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceipt {
     pub receipt_id: String,
+    pub included_in_block_hash: String,
+    pub included_in_chunk_hash: String,
+    pub receipt_index_in_chunk: i32,
+    pub included_in_block_timestamp: BigDecimal,
+    pub predecessor_account_id: String,
+    pub receiver_account_id: String,
+    pub originated_from_transaction_hash: String,
     pub signer_account_id: String,
     pub signer_public_key: String,
     pub gas_price: BigDecimal,
@@ -111,17 +87,29 @@ pub struct ActionReceipt {
 
 impl ActionReceipt {
     pub fn try_from_action_receipt_view(
-        receipt_view: &near_indexer_primitives::views::ReceiptView,
+        receipt: &near_indexer_primitives::views::ReceiptView,
+        block_hash: &near_indexer_primitives::CryptoHash,
+        transaction_hash: &str,
+        chunk_hash: &near_indexer_primitives::CryptoHash,
+        index_in_chunk: i32,
+        block_timestamp: u64,
     ) -> anyhow::Result<Self> {
         if let near_indexer_primitives::views::ReceiptEnumView::Action {
             signer_id,
             signer_public_key,
             gas_price,
             ..
-        } = &receipt_view.receipt
+        } = &receipt.receipt
         {
             Ok(Self {
-                receipt_id: receipt_view.receipt_id.to_string(),
+                receipt_id: receipt.receipt_id.to_string(),
+                included_in_block_hash: block_hash.to_string(),
+                included_in_chunk_hash: chunk_hash.to_string(),
+                predecessor_account_id: receipt.predecessor_id.to_string(),
+                receiver_account_id: receipt.receiver_id.to_string(),
+                originated_from_transaction_hash: transaction_hash.to_string(),
+                receipt_index_in_chunk: index_in_chunk,
+                included_in_block_timestamp: block_timestamp.into(),
                 signer_account_id: signer_id.to_string(),
                 signer_public_key: signer_public_key.to_string(),
                 gas_price: BigDecimal::from_str(gas_price.to_string().as_str())
@@ -136,6 +124,13 @@ impl ActionReceipt {
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.receipt_id);
+        args.add(&self.included_in_block_hash);
+        args.add(&self.included_in_chunk_hash);
+        args.add(&self.receipt_index_in_chunk);
+        args.add(&self.included_in_block_timestamp);
+        args.add(&self.predecessor_account_id);
+        args.add(&self.receiver_account_id);
+        args.add(&self.originated_from_transaction_hash);
         args.add(&self.signer_account_id);
         args.add(&self.signer_public_key);
         args.add(&self.gas_price);

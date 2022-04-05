@@ -1,4 +1,4 @@
-use crate::models;
+use crate::{models, ParentTransactionHashString, ReceiptOrDataId};
 use cached::Cached;
 use futures::future::try_join_all;
 use futures::try_join;
@@ -43,56 +43,15 @@ async fn store_chunk_receipts(
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
-    let mut skipping_receipt_ids =
-        std::collections::HashSet::<near_indexer_primitives::CryptoHash>::new();
-
-    let tx_hashes_for_receipts = find_tx_hashes_for_receipts(
-        pool,
-        receipts.to_vec(),
-        block_hash,
-        chunk_hash,
-        std::sync::Arc::clone(&receipts_cache),
-    )
-    .await?;
-
-    let receipt_models: Vec<models::Receipt> = receipts
-        .iter()
-        .enumerate()
-        .filter_map(|(index, r)| {
-            // We need to search for parent transaction hash in cache differently
-            // depending on the Receipt kind
-            // In case of Action Receipt we are looking for ReceiptId
-            // In case of Data Receipt we are looking for DataId
-            let receipt_or_data_id = match r.receipt {
-                near_indexer_primitives::views::ReceiptEnumView::Action { .. } => {
-                    crate::ReceiptOrDataId::ReceiptId(r.receipt_id)
-                }
-                near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
-                    crate::ReceiptOrDataId::DataId(data_id)
-                }
-            };
-            if let Some(transaction_hash) = tx_hashes_for_receipts.get(&receipt_or_data_id) {
-                Some(models::Receipt::from_receipt_view(
-                        r,
-                        block_hash,
-                        transaction_hash,
-                        chunk_hash,
-                        index as i32,
-                        block_timestamp,
-                    ))
-            } else {
-                warn!(
-                    target: crate::INDEXER,
-                    "Skipping Receipt {} as we can't find parent Transaction for it. Happen in block hash {}, chunk hash {}",
-                    r.receipt_id.to_string(),
-                    block_hash,
-                    chunk_hash,
-                );
-                skipping_receipt_ids.insert(r.receipt_id);
-                None
-            }
-        })
-        .collect();
+    let tx_hashes_for_receipts: HashMap<ReceiptOrDataId, ParentTransactionHashString> =
+        find_tx_hashes_for_receipts(
+            pool,
+            receipts.to_vec(),
+            block_hash,
+            chunk_hash,
+            std::sync::Arc::clone(&receipts_cache),
+        )
+        .await?;
 
     // At the moment we can observe output data in the Receipt it's impossible to know
     // the Receipt Id of that Data Receipt. That's why we insert the pair DataId<>ParentTransactionHash
@@ -121,23 +80,43 @@ async fn store_chunk_receipts(
     // releasing the lock
     drop(receipts_cache_lock);
 
-    save_receipts(pool, receipt_models).await?;
-
     let (action_receipts, data_receipts): (
-        Vec<&near_indexer_primitives::views::ReceiptView>,
-        Vec<&near_indexer_primitives::views::ReceiptView>,
+        Vec<(usize, &near_indexer_primitives::views::ReceiptView)>,
+        Vec<models::DataReceipt>,
     ) = receipts
         .iter()
-        .filter(|r| !skipping_receipt_ids.contains(&r.receipt_id))
-        .partition(|receipt| {
-            matches!(
-                receipt.receipt,
-                near_indexer_primitives::views::ReceiptEnumView::Action { .. }
-            )
+        .enumerate()
+        .partition_map(|(index, receipt)| match receipt.receipt {
+            near_indexer_primitives::views::ReceiptEnumView::Action { .. } => {
+                Either::Left((index, receipt))
+            }
+            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
+                // todo it's not good to do it like that. get rid of expect
+                let transaction_hash = tx_hashes_for_receipts
+                    .get(&crate::ReceiptOrDataId::DataId(data_id))
+                    .expect("");
+                Either::Right(
+                    models::DataReceipt::try_from_data_receipt_view(
+                        receipt,
+                        block_hash,
+                        transaction_hash,
+                        chunk_hash,
+                        index as i32,
+                        block_timestamp,
+                    )
+                    .expect("DataReceipt should be converted smoothly"),
+                )
+            }
         });
 
-    let process_receipt_actions_future =
-        store_receipt_actions(pool, action_receipts, block_timestamp);
+    let process_receipt_actions_future = store_receipt_actions(
+        pool,
+        action_receipts,
+        &tx_hashes_for_receipts,
+        block_hash,
+        chunk_hash,
+        block_timestamp,
+    );
 
     let process_receipt_data_future = store_data_receipts(pool, &data_receipts);
 
@@ -376,38 +355,35 @@ async fn find_transaction_hashes_for_receipt_via_transactions(
         .collect())
 }
 
-async fn save_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: Vec<models::Receipt>,
-) -> anyhow::Result<()> {
-    for receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut receipts_count = 0;
-
-        receipts_part.iter().for_each(|receipt| {
-            receipt.add_to_args(&mut args);
-            receipts_count += 1;
-        });
-
-        let query = models::receipts::Receipt::get_query(receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
-    Ok(())
-}
-
 async fn store_receipt_actions(
     pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: Vec<&near_indexer_primitives::views::ReceiptView>,
+    receipts: Vec<(usize, &near_indexer_primitives::views::ReceiptView)>,
+    tx_hashes_for_receipts: &HashMap<ReceiptOrDataId, ParentTransactionHashString>,
+    block_hash: &near_indexer_primitives::CryptoHash,
+    chunk_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
 ) -> anyhow::Result<()> {
     let receipt_actions: Vec<models::ActionReceipt> = receipts
         .iter()
-        .filter_map(|receipt| models::ActionReceipt::try_from_action_receipt_view(*receipt).ok())
+        .filter_map(|(index, receipt)| {
+            let transaction_hash = tx_hashes_for_receipts
+                .get(&crate::ReceiptOrDataId::ReceiptId(receipt.receipt_id))
+                .expect("");
+            models::ActionReceipt::try_from_action_receipt_view(
+                receipt,
+                block_hash,
+                transaction_hash,
+                chunk_hash,
+                *index as i32,
+                block_timestamp,
+            )
+            .ok()
+        })
         .collect();
 
     let receipt_action_actions: Vec<models::ActionReceiptAction> = receipts
         .iter()
-        .filter_map(|receipt| {
+        .filter_map(|(_, receipt)| {
             if let near_indexer_primitives::views::ReceiptEnumView::Action { actions, .. } =
                 &receipt.receipt
             {
@@ -430,7 +406,7 @@ async fn store_receipt_actions(
 
     let receipt_action_input_data: Vec<models::ActionReceiptInputData> = receipts
         .iter()
-        .filter_map(|receipt| {
+        .filter_map(|(_, receipt)| {
             if let near_indexer_primitives::views::ReceiptEnumView::Action {
                 input_data_ids, ..
             } = &receipt.receipt
@@ -450,7 +426,7 @@ async fn store_receipt_actions(
 
     let receipt_action_output_data: Vec<models::ActionReceiptOutputData> = receipts
         .iter()
-        .filter_map(|receipt| {
+        .filter_map(|(_, receipt)| {
             if let near_indexer_primitives::views::ReceiptEnumView::Action {
                 output_data_receivers,
                 ..
@@ -561,17 +537,13 @@ async fn store_action_receipts_output_data(
 
 async fn store_data_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: &[&near_indexer_primitives::views::ReceiptView],
+    receipts: &[models::DataReceipt],
 ) -> anyhow::Result<()> {
-    for data_receipts_part in &receipts
-        .iter()
-        .filter_map(|receipt| models::DataReceipt::try_from_data_receipt_view(*receipt).ok())
-        .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
-    {
+    for data_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
         let mut args = sqlx::mysql::MySqlArguments::default();
         let mut data_receipts_count = 0;
 
-        data_receipts_part.for_each(|data_receipt| {
+        data_receipts_part.iter().for_each(|data_receipt| {
             data_receipt.add_to_args(&mut args);
             data_receipts_count += 1;
         });

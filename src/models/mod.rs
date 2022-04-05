@@ -1,11 +1,11 @@
 use near_indexer_primitives::views::{
-    AccessKeyPermissionView, ExecutionStatusView, ReceiptEnumView, StateChangeCauseView,
+    AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
 
 pub use near_lake_flows_into_sql::FieldCount;
 pub use receipts::{
     ActionReceipt, ActionReceiptAction, ActionReceiptInputData, ActionReceiptOutputData,
-    DataReceipt, Receipt,
+    DataReceipt,
 };
 pub use transactions::Transaction;
 
@@ -72,15 +72,6 @@ impl PrintEnum for ExecutionStatusView {
             ExecutionStatusView::Failure(_) => "FAILURE",
             ExecutionStatusView::SuccessValue(_) => "SUCCESS_VALUE",
             ExecutionStatusView::SuccessReceiptId(_) => "SUCCESS_RECEIPT_ID",
-        }
-    }
-}
-
-impl PrintEnum for ReceiptEnumView {
-    fn print(&self) -> &str {
-        match self {
-            ReceiptEnumView::Action { .. } => "ACTION",
-            ReceiptEnumView::Data { .. } => "DATA",
         }
     }
 }

@@ -54,50 +54,206 @@ CREATE TABLE account_changes
     KEY (caused_by_transaction_hash) USING HASH
 );
 
--- action_kind options:
---      {
---         'CREATE_ACCOUNT',
---         'DEPLOY_CONTRACT',
---         'FUNCTION_CALL',
---         'TRANSFER',
---         'STAKE',
---         'ADD_KEY',
---         'DELETE_KEY',
---         'DELETE_ACCOUNT'
---      }
-CREATE TABLE action_receipt_actions
+CREATE TABLE create_account_action_receipts
 (
+    block_timestamp numeric(20, 0) NOT NULL,
     receipt_id                          text           NOT NULL,
     --     TODO we can drop it since we have index_in_block
     index_in_action_receipt             integer        NOT NULL,
-    action_kind                         text           NOT NULL,
-    args                                json           NOT NULL,
     receipt_predecessor_account_id      text           NOT NULL,
     receipt_receiver_account_id         text           NOT NULL,
-    receipt_included_in_block_timestamp numeric(20, 0) NOT NULL,
+
+    -- no new fields here
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
     index_in_block                      integer        NOT NULL,
 
-
---     method_name AS args::%method_name PERSISTED text,
---     KEY(method_name) USING HASH
-
     SHARD KEY (receipt_id),
-    SORT KEY (receipt_included_in_block_timestamp, index_in_block),
+    SORT KEY (block_timestamp, index_in_block),
     UNIQUE KEY (receipt_id, index_in_action_receipt),
-    KEY (action_kind) USING HASH,
     KEY (receipt_predecessor_account_id) USING HASH,
     KEY (receipt_receiver_account_id) USING HASH,
-    KEY (receipt_included_in_block_timestamp) USING HASH,
-    KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
 
--- TODO discuss indexes on json fields
--- https://docs.singlestore.com/db/v7.6/en/create-your-database/physical-database-schema-design/procedures-for-physical-database-schema-design/using-json.html#indexing-data-in-json-columns
--- CREATE INDEX action_receipt_actions_args_function_call_idx ON action_receipt_actions ((args ->> 'method_name')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL';
--- CREATE INDEX action_receipt_actions_args_receiver_id_idx ON action_receipt_actions ((args -> 'args_json' ->> 'receiver_id')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL' AND
---           (action_receipt_actions.args ->> 'args_json') IS NOT NULL;
+CREATE TABLE deploy_contract_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    code_sha256 text NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE function_call_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    gas numeric(45, 0) NOT NULL,
+    deposit numeric(45, 0) NOT NULL,
+    args_json json NOT NULL,
+    method_name text NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE transfer_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    deposit numeric(45, 0) NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE stake_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    stake numeric(45, 0) NOT NULL,
+    public_key text NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE add_access_key_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    public_key text NOT NULL,
+    permission_kind text NOT NULL,
+
+    allowance numeric(45, 0),
+    access_key_receiver_id text, -- null if permission_kind FULL_ACCESS
+    method_names json,  -- null if permission_kind FULL_ACCESS
+    -- nobody cares about nonce
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE delete_access_key_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    public_key text NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
+);
+
+CREATE TABLE delete_account_action_receipts
+(
+    block_timestamp numeric(20, 0) NOT NULL,
+    receipt_id                          text           NOT NULL,
+    --     TODO we can drop it since we have index_in_block
+    index_in_action_receipt             integer        NOT NULL,
+    receipt_predecessor_account_id      text           NOT NULL,
+    receipt_receiver_account_id         text           NOT NULL,
+
+    beneficiary_account_id text NOT NULL,
+
+    -- TODO should we add hash keys on the new columns?
+    -- TODO add the column
+    index_in_block                      integer        NOT NULL,
+
+    SHARD KEY (receipt_id),
+    SORT KEY (block_timestamp, index_in_block),
+    UNIQUE KEY (receipt_id, index_in_action_receipt),
+    KEY (receipt_predecessor_account_id) USING HASH,
+    KEY (receipt_receiver_account_id) USING HASH,
+    KEY (block_timestamp) USING HASH,
+    KEY (receipt_receiver_account_id, block_timestamp) USING HASH
 );
 
 CREATE TABLE action_receipt_input_data

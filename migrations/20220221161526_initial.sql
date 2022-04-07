@@ -71,68 +71,84 @@ CREATE TABLE action_receipt_actions
     --     TODO we can drop it since we have index_in_block
     index_in_action_receipt             integer        NOT NULL,
     action_kind                         text           NOT NULL,
-    args                                json           NOT NULL,
     receipt_predecessor_account_id      text           NOT NULL,
     receipt_receiver_account_id         text           NOT NULL,
     receipt_included_in_block_timestamp numeric(20, 0) NOT NULL,
 
+-- TODO add the columns
+    deployed_contract_code_sha256 text,
+    function_call_attached_gas numeric(45, 0),
+    function_call_attached_deposit numeric(45, 0),
+    function_call_args_json json,
+    function_call_method_name text,
+    transfer_amount numeric(45, 0),
+    stake_amount numeric(45, 0),
+    stake_used_access_key text,
+    added_access_key text,
+    added_access_key_permission_kind text,
+    added_access_key_allowance numeric(45, 0),
+    added_access_key_receiver_id text,
+    added_access_key_method_names json,
+    deleted_access_key text,
+    deleted_account_beneficiary_account_id text,
+
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    index_in_block                      integer        NOT NULL,
+--     index_in_block                      integer        NOT NULL,
 
 
 --     method_name AS args::%method_name PERSISTED text,
 --     KEY(method_name) USING HASH
 
     SHARD KEY (receipt_id),
-    SORT KEY (receipt_included_in_block_timestamp, index_in_block),
+    SORT KEY (receipt_included_in_block_timestamp),
     UNIQUE KEY (receipt_id, index_in_action_receipt),
     KEY (action_kind) USING HASH,
     KEY (receipt_predecessor_account_id) USING HASH,
     KEY (receipt_receiver_account_id) USING HASH,
     KEY (receipt_included_in_block_timestamp) USING HASH,
-    KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH
+    KEY (receipt_receiver_account_id, receipt_included_in_block_timestamp) USING HASH,
+    KEY(function_call_method_name)  USING HASH
 
 -- TODO discuss indexes on json fields
 -- https://docs.singlestore.com/db/v7.6/en/create-your-database/physical-database-schema-design/procedures-for-physical-database-schema-design/using-json.html#indexing-data-in-json-columns
--- CREATE INDEX action_receipt_actions_args_function_call_idx ON action_receipt_actions ((args ->> 'method_name')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL';
 -- CREATE INDEX action_receipt_actions_args_receiver_id_idx ON action_receipt_actions ((args -> 'args_json' ->> 'receiver_id')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL' AND
 --           (action_receipt_actions.args ->> 'args_json') IS NOT NULL;
 );
 
 CREATE TABLE action_receipt_input_data
 (
+    block_timestamp     numeric(20, 0) NOT NULL,
     input_data_id       text           NOT NULL,
     input_to_receipt_id text           NOT NULL,
 
 -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    block_timestamp     numeric(20, 0) NOT NULL,
-    -- TODO add the column
-    index_in_block      integer        NOT NULL,
+--     index_in_block      integer        NOT NULL,
 
     SHARD KEY (input_to_receipt_id),
-    SORT KEY (block_timestamp, index_in_block),
+    SORT KEY (block_timestamp),
     UNIQUE KEY (input_data_id, input_to_receipt_id),
+    KEY (block_timestamp) USING HASH,
     KEY (input_data_id) USING HASH,
     KEY (input_to_receipt_id) USING HASH
 );
 
 CREATE TABLE action_receipt_output_data
 (
+    block_timestamp        numeric(20, 0) NOT NULL,
     output_data_id         text           NOT NULL,
     output_from_receipt_id text           NOT NULL,
     receiver_account_id    text           NOT NULL,
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    block_timestamp        numeric(20, 0) NOT NULL,
-    -- TODO add the column
-    index_in_block         integer        NOT NULL,
+--     index_in_block         integer        NOT NULL,
 
     SHARD KEY (output_from_receipt_id),
-    SORT KEY (block_timestamp, index_in_block),
+    SORT KEY (block_timestamp),
     UNIQUE KEY (output_data_id, output_from_receipt_id),
+    KEY (block_timestamp) USING HASH,
     KEY (output_data_id) USING HASH,
     KEY (output_from_receipt_id) USING HASH,
     KEY (receiver_account_id) USING HASH
@@ -155,10 +171,10 @@ CREATE TABLE action_receipts
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    index_in_block                   integer        NOT NULL,
+--     index_in_block                   integer        NOT NULL,
 
     SHARD KEY (receipt_id),
-    SORT KEY (included_in_block_timestamp, index_in_block),
+    SORT KEY (included_in_block_timestamp),
     UNIQUE KEY (receipt_id),
     KEY (included_in_block_hash) USING HASH,
     KEY (included_in_chunk_hash) USING HASH,
@@ -189,23 +205,19 @@ CREATE TABLE blocks
 
 CREATE TABLE chunks
 (
+    block_timestamp        numeric(20, 0) NOT NULL,
     included_in_block_hash text           NOT NULL,
     chunk_hash             text           NOT NULL,
-    shard_id               numeric(20, 0) NOT NULL,
+    shard_id               integer        NOT NULL,
     signature              text           NOT NULL,
     gas_limit              numeric(20, 0) NOT NULL,
     gas_used               numeric(20, 0) NOT NULL,
     author_account_id      text           NOT NULL,
 
-    -- TODO should we add hash keys on the new columns?
-    -- TODO add the column
-    block_timestamp        numeric(20, 0) NOT NULL,
-    -- TODO add the column
-    index_in_block         integer        NOT NULL,
-
     SHARD KEY (chunk_hash),
-    SORT KEY (block_timestamp, index_in_block),
+    SORT KEY (block_timestamp, shard_id),
     UNIQUE KEY (chunk_hash),
+    KEY (block_timestamp) USING HASH,
     KEY (included_in_block_hash) USING HASH
 );
 
@@ -227,10 +239,10 @@ CREATE TABLE data_receipts
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    index_in_block                   integer        NOT NULL,
+--     index_in_block                   integer        NOT NULL,
 
-    SHARD KEY (receipt_id),
-    SORT KEY (included_in_block_timestamp, index_in_block),
+    SHARD KEY (data_id),
+    SORT KEY (included_in_block_timestamp),
     UNIQUE KEY (data_id),
     KEY (receipt_id) USING HASH,
     KEY (included_in_block_hash) USING HASH,
@@ -243,6 +255,7 @@ CREATE TABLE data_receipts
 
 CREATE TABLE execution_outcome_receipts
 (
+    block_timestamp            numeric(20, 0) NOT NULL,
     executed_receipt_id        text           NOT NULL,
     --     TODO we can drop it since we have index_in_block
     index_in_execution_outcome integer        NOT NULL,
@@ -250,13 +263,12 @@ CREATE TABLE execution_outcome_receipts
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    block_timestamp            numeric(20, 0) NOT NULL,
-    -- TODO add the column
-    index_in_block             integer        NOT NULL,
+--     index_in_block             integer        NOT NULL,
 
     SHARD KEY (executed_receipt_id),
-    SORT KEY (block_timestamp, index_in_block),
+    SORT KEY (block_timestamp),
     UNIQUE KEY (executed_receipt_id, index_in_execution_outcome, produced_receipt_id),
+    KEY (block_timestamp) USING HASH,
     KEY (produced_receipt_id) USING HASH
 );
 
@@ -282,10 +294,10 @@ CREATE TABLE execution_outcomes
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    index_in_block              integer        NOT NULL,
+--     index_in_block              integer        NOT NULL,
 
     SHARD KEY (receipt_id),
-    SORT KEY (executed_in_block_timestamp, index_in_block),
+    SORT KEY (executed_in_block_timestamp),
     UNIQUE KEY (receipt_id),
     KEY (executed_in_block_timestamp) USING HASH,
     KEY (executed_in_block_hash) USING HASH,
@@ -319,10 +331,10 @@ CREATE TABLE transactions
 
     -- TODO should we add hash keys on the new columns?
     -- TODO add the column
-    index_in_block                  integer        NOT NULL,
+--     index_in_block                  integer        NOT NULL,
 
     SHARD KEY (transaction_hash),
-    SORT KEY (block_timestamp, index_in_block),
+    SORT KEY (block_timestamp),
     UNIQUE KEY (transaction_hash),
     KEY (converted_into_receipt_id) USING HASH,
     KEY (included_in_block_hash) USING HASH,

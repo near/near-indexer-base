@@ -5,6 +5,7 @@ use crate::models::FieldCount;
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct Chunk {
+    pub block_timestamp: BigDecimal,
     pub included_in_block_hash: String,
     pub chunk_hash: String,
     pub shard_id: BigDecimal,
@@ -18,8 +19,10 @@ impl Chunk {
     pub fn from_chunk_view(
         chunk_view: &near_indexer_primitives::IndexerChunkView,
         block_hash: &near_indexer_primitives::CryptoHash,
+        block_timestamp: u64,
     ) -> Self {
         Self {
+            block_timestamp: block_timestamp.into(),
             included_in_block_hash: block_hash.to_string(),
             chunk_hash: chunk_view.header.chunk_hash.to_string(),
             shard_id: chunk_view.header.shard_id.into(),
@@ -31,6 +34,7 @@ impl Chunk {
     }
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.block_timestamp);
         args.add(&self.included_in_block_hash);
         args.add(&self.chunk_hash);
         args.add(&self.shard_id);

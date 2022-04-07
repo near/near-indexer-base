@@ -1,5 +1,5 @@
 use near_indexer_primitives::views::{
-    AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
+    AccessKeyPermissionView, ActionView, ExecutionStatusView, StateChangeCauseView,
 };
 
 pub use near_lake_flows_into_sql::FieldCount;
@@ -9,14 +9,11 @@ pub use receipts::{
 };
 pub use transactions::Transaction;
 
-pub(crate) use serializers::extract_action_type_and_value_from_action_view;
-
 pub(crate) mod account_changes;
 pub(crate) mod blocks;
 pub(crate) mod chunks;
 pub(crate) mod execution_outcomes;
 pub(crate) mod receipts;
-mod serializers;
 pub(crate) mod transactions;
 
 pub trait FieldCount {
@@ -81,6 +78,21 @@ impl PrintEnum for AccessKeyPermissionView {
         match self {
             AccessKeyPermissionView::FunctionCall { .. } => "FUNCTION_CALL",
             AccessKeyPermissionView::FullAccess => "FULL_ACCESS",
+        }
+    }
+}
+
+impl PrintEnum for ActionView {
+    fn print(&self) -> &str {
+        match self {
+            ActionView::CreateAccount => "CREATE_ACCOUNT",
+            ActionView::DeployContract { .. } => "DEPLOY_CONTRACT",
+            ActionView::FunctionCall { .. } => "FUNCTION_CALL",
+            ActionView::Transfer { .. } => "TRANSFER",
+            ActionView::Stake { .. } => "STAKE",
+            ActionView::AddKey { .. } => "ADD_KEY",
+            ActionView::DeleteKey { .. } => "DELETE_KEY",
+            ActionView::DeleteAccount { .. } => "DELETE_ACCOUNT",
         }
     }
 }

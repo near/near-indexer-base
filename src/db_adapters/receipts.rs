@@ -413,6 +413,7 @@ async fn store_receipt_actions(
             {
                 Some(input_data_ids.iter().map(move |data_id| {
                     models::ActionReceiptInputData::from_data_id(
+                        block_timestamp,
                         receipt.receipt_id.to_string(),
                         data_id.to_string(),
                     )
@@ -434,6 +435,7 @@ async fn store_receipt_actions(
             {
                 Some(output_data_receivers.iter().map(move |receiver| {
                     models::ActionReceiptOutputData::from_data_receiver(
+                        block_timestamp,
                         receipt.receipt_id.to_string(),
                         receiver,
                     )

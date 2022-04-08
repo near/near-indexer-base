@@ -327,3 +327,9 @@ CREATE TABLE transactions
     KEY (signer_public_key) USING HASH,
     KEY (receiver_account_id) USING HASH
 );
+
+CREATE ROWSTORE TABLE _blocks_to_rerun
+(
+    block_height      numeric(20, 0) NOT NULL,
+    PRIMARY KEY (block_height)
+);

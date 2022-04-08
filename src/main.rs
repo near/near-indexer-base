@@ -1,13 +1,16 @@
 // TODO cleanup imports in all the files in the end
 use cached::SizedCache;
+use clap::Parser;
 use dotenv::dotenv;
 use futures::future::try_join_all;
 use futures::{try_join, StreamExt};
-use near_lake_framework::LakeConfig;
 use std::env;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
+use crate::configs::Opts;
+
+mod configs;
 mod db_adapters;
 mod models;
 
@@ -33,21 +36,20 @@ pub type ReceiptsCache =
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
+    // --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 9820210
+    let opts: Opts = Opts::parse();
+    let config = near_lake_framework::LakeConfig {
+        s3_bucket_name: opts.s3_bucket_name.clone(),
+        s3_region_name: opts.s3_region_name.clone(),
+        start_block_height: opts.start_block_height, // 9820210
+    };
+
     let pool = sqlx::MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
     // TODO Error: while executing migrations: error returned from database: 1128 (HY000): Function 'near_indexer.GET_LOCK' is not defined
     // sqlx::migrate!().run(&pool).await?;
 
     init_tracing();
 
-    let config = LakeConfig {
-        // //  for testnet, lake starts streaming from 42839521
-        //     s3_bucket_name: "near-lake-data-testnet".to_string(),
-        //     s3_region_name: "eu-central-1".to_string(),
-        //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
-        s3_bucket_name: "near-lake-data-mainnet".to_string(),
-        s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 9825209, //9825208, //12117820, //9823031, //9820214, // 9820210 9823031 12117827 data receipt
-    };
     let stream = near_lake_framework::streamer(config);
 
     // We want to prevent unnecessary SELECT queries to the database to find
@@ -64,11 +66,11 @@ async fn main() -> anyhow::Result<()> {
                 streamer_message,
                 &pool,
                 std::sync::Arc::clone(&receipts_cache),
+                !opts.non_strict_mode,
             )
         })
         .buffer_unordered(1usize);
 
-    let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
             Ok(_) => {}
@@ -76,9 +78,6 @@ async fn main() -> anyhow::Result<()> {
                 return Err(anyhow::anyhow!(e));
             }
         }
-        let elapsed = time_now.elapsed();
-        println!("Elapsed: {:.3?}", elapsed);
-        time_now = std::time::Instant::now();
     }
 
     Ok(())
@@ -88,12 +87,15 @@ async fn handle_streamer_message(
     streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,
     pool: &sqlx::Pool<sqlx::MySql>,
     receipts_cache: ReceiptsCache,
+    strict_mode: bool,
 ) -> anyhow::Result<()> {
-    eprintln!(
-        "{} / shards {}",
-        streamer_message.block.header.height,
-        streamer_message.shards.len()
-    );
+    if streamer_message.block.header.height % 100 == 0 {
+        eprintln!(
+            "{} / shards {}",
+            streamer_message.block.header.height,
+            streamer_message.shards.len()
+        );
+    }
 
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
@@ -114,9 +116,11 @@ async fn handle_streamer_message(
 
     let receipts_future = db_adapters::receipts::store_receipts(
         pool,
+        strict_mode,
         &streamer_message.shards,
         &streamer_message.block.header.hash,
         streamer_message.block.header.timestamp,
+        streamer_message.block.header.height,
         std::sync::Arc::clone(&receipts_cache),
     );
 

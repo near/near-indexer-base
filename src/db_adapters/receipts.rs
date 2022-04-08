@@ -12,9 +12,11 @@ use tracing::warn;
 /// Saves receipts to database
 pub(crate) async fn store_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
+    strict_mode: bool,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
+    block_height: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
     let futures = shards
@@ -24,10 +26,12 @@ pub(crate) async fn store_receipts(
         .map(|chunk| {
             store_chunk_receipts(
                 pool,
+                strict_mode,
                 &chunk.receipts,
                 block_hash,
                 &chunk.header.chunk_hash,
                 block_timestamp,
+                block_height,
                 receipts_cache.clone(),
             )
         });
@@ -37,17 +41,21 @@ pub(crate) async fn store_receipts(
 
 async fn store_chunk_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
+    strict_mode: bool,
     receipts: &[near_indexer_primitives::views::ReceiptView],
     block_hash: &near_indexer_primitives::CryptoHash,
     chunk_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
+    block_height: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
     let tx_hashes_for_receipts: HashMap<ReceiptOrDataId, ParentTransactionHashString> =
         find_tx_hashes_for_receipts(
             pool,
+            strict_mode,
             receipts.to_vec(),
             block_hash,
+            block_height,
             chunk_hash,
             std::sync::Arc::clone(&receipts_cache),
         )
@@ -127,9 +135,11 @@ async fn store_chunk_receipts(
 /// Looks for already created parent transaction hash for given receipts
 async fn find_tx_hashes_for_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
+    strict_mode: bool,
     mut receipts: Vec<near_indexer_primitives::views::ReceiptView>,
     // TODO we need to add sort of retry logic, these vars could be helpful
     block_hash: &near_indexer_primitives::CryptoHash,
+    block_height: u64,
     chunk_hash: &near_indexer_primitives::CryptoHash,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
@@ -233,7 +243,13 @@ async fn find_tx_hashes_for_receipts(
             .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
     });
     if !receipts.is_empty() {
-        panic!("all the transactions should be found by this place");
+        if strict_mode {
+            panic!("all the transactions should be found by this place");
+        }
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        args.add(block_height);
+        let query = "INSERT IGNORE INTO _blocks_to_rerun VALUES (?)";
+        sqlx::query_with(query, args).execute(pool).await?;
     }
 
     Ok(tx_hashes_for_receipts)

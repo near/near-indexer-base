@@ -232,26 +232,29 @@ async fn find_tx_hashes_for_receipts(
         }
     }
 
-    let tx_hashes_for_receipts_via_outcomes =
-        find_transaction_hashes_for_receipts_via_outcomes(pool, &action_receipt_ids).await?;
-    tx_hashes_for_receipts.extend(tx_hashes_for_receipts_via_outcomes.clone());
+    if !action_receipt_ids.is_empty() {
+        let tx_hashes_for_receipts_via_outcomes =
+            find_transaction_hashes_for_receipts_via_outcomes(pool, &action_receipt_ids).await?;
+        tx_hashes_for_receipts.extend(tx_hashes_for_receipts_via_outcomes.clone());
 
-    receipts.retain(|r| {
-        !tx_hashes_for_receipts_via_outcomes
-            .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
-    });
-    if receipts.is_empty() {
-        return Ok(tx_hashes_for_receipts);
+        receipts.retain(|r| {
+            !tx_hashes_for_receipts_via_outcomes
+                .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+        });
+        if receipts.is_empty() {
+            return Ok(tx_hashes_for_receipts);
+        }
+
+        let tx_hashes_for_receipt_via_transactions =
+            find_transaction_hashes_for_receipt_via_transactions(pool, &action_receipt_ids).await?;
+        tx_hashes_for_receipts.extend(tx_hashes_for_receipt_via_transactions.clone());
+
+        receipts.retain(|r| {
+            !tx_hashes_for_receipt_via_transactions
+                .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+        });
     }
 
-    let tx_hashes_for_receipt_via_transactions =
-        find_transaction_hashes_for_receipt_via_transactions(pool, &action_receipt_ids).await?;
-    tx_hashes_for_receipts.extend(tx_hashes_for_receipt_via_transactions.clone());
-
-    receipts.retain(|r| {
-        !tx_hashes_for_receipt_via_transactions
-            .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
-    });
     if !receipts.is_empty() {
         if strict_mode {
             panic!("all the transactions should be found by this place");

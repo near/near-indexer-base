@@ -107,6 +107,7 @@ async fn handle_streamer_message(
         );
     }
 
+    let mut time_now = std::time::Instant::now();
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
     let chunks_future = db_adapters::chunks::store_chunks(
@@ -124,6 +125,16 @@ async fn handle_streamer_message(
         std::sync::Arc::clone(&receipts_cache),
     );
 
+    try_join!(blocks_future, chunks_future, transactions_future)?;
+
+    let elapsed = time_now.elapsed();
+    println!(
+        "Elapsed time spent on first 3 futures {}: {:.3?}",
+        block_height, elapsed
+    );
+    time_now = std::time::Instant::now();
+
+
     let receipts_future = db_adapters::receipts::store_receipts(
         pool,
         strict_mode,
@@ -133,6 +144,15 @@ async fn handle_streamer_message(
         streamer_message.block.header.height,
         std::sync::Arc::clone(&receipts_cache),
     );
+
+    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+
+    let elapsed = time_now.elapsed();
+    println!(
+        "Elapsed time spent on receipt future {}: {:.3?}",
+        block_height, elapsed
+    );
+    time_now = std::time::Instant::now();
 
     let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
         pool,
@@ -154,9 +174,13 @@ async fn handle_streamer_message(
         try_join_all(futures).await.map(|_| ())
     };
 
-    try_join!(blocks_future, chunks_future, transactions_future)?;
-    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
     try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
+    let elapsed = time_now.elapsed();
+    println!(
+        "Elapsed time spent on last 2 futures {}: {:.3?}",
+        block_height, elapsed
+    );
+    time_now = std::time::Instant::now();
     Ok(streamer_message.block.header.height)
 }
 

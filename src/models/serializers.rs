@@ -24,7 +24,7 @@ impl From<&near_indexer_primitives::views::AccessKeyView> for AccessKeyView {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) enum AccessKeyPermissionView {
     FunctionCall {
-        allowance: Option<near_indexer_primitives::types::Balance>,
+        allowance: Option<String>,
         receiver_id: String,
         method_names: Vec<String>,
     },
@@ -40,7 +40,7 @@ impl From<near_indexer_primitives::views::AccessKeyPermissionView> for AccessKey
                 receiver_id,
                 method_names,
             } => Self::FunctionCall {
-                allowance,
+                allowance: allowance.map(|v| v.to_string()),
                 receiver_id: receiver_id.escape_default().to_string(),
                 method_names: method_names
                     .into_iter()

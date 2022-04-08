@@ -200,19 +200,22 @@ impl ActionReceiptAction {
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptInputData {
+    pub block_timestamp: BigDecimal,
     pub input_to_receipt_id: String,
     pub input_data_id: String,
 }
 
 impl ActionReceiptInputData {
-    pub fn from_data_id(receipt_id: String, data_id: String) -> Self {
+    pub fn from_data_id(block_timestamp: u64, receipt_id: String, data_id: String) -> Self {
         Self {
+            block_timestamp: block_timestamp.into(),
             input_to_receipt_id: receipt_id,
             input_data_id: data_id,
         }
     }
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.block_timestamp);
         args.add(&self.input_to_receipt_id);
         args.add(&self.input_data_id);
     }
@@ -228,6 +231,7 @@ impl ActionReceiptInputData {
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptOutputData {
+    pub block_timestamp: BigDecimal,
     pub output_from_receipt_id: String,
     pub output_data_id: String,
     pub receiver_account_id: String,
@@ -235,10 +239,12 @@ pub struct ActionReceiptOutputData {
 
 impl ActionReceiptOutputData {
     pub fn from_data_receiver(
+        block_timestamp: u64,
         receipt_id: String,
         data_receiver: &near_indexer_primitives::views::DataReceiverView,
     ) -> Self {
         Self {
+            block_timestamp: block_timestamp.into(),
             output_from_receipt_id: receipt_id,
             output_data_id: data_receiver.data_id.to_string(),
             receiver_account_id: data_receiver.receiver_id.to_string(),
@@ -246,6 +252,7 @@ impl ActionReceiptOutputData {
     }
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.block_timestamp);
         args.add(&self.output_from_receipt_id);
         args.add(&self.output_data_id);
         args.add(&self.receiver_account_id);

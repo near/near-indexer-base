@@ -68,6 +68,7 @@ pub async fn store_execution_outcomes_for_chunk(
                         );
                     }
                     models::execution_outcomes::ExecutionOutcomeReceipt {
+                        block_timestamp: block_timestamp.into(),
                         executed_receipt_id: outcome.execution_outcome.id.to_string(),
                         index_in_execution_outcome: index as i32,
                         produced_receipt_id: receipt_id.to_string(),

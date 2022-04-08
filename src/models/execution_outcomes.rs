@@ -64,6 +64,7 @@ impl ExecutionOutcome {
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ExecutionOutcomeReceipt {
+    pub block_timestamp: BigDecimal,
     pub executed_receipt_id: String,
     pub index_in_execution_outcome: i32,
     pub produced_receipt_id: String,
@@ -71,6 +72,7 @@ pub struct ExecutionOutcomeReceipt {
 
 impl ExecutionOutcomeReceipt {
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+        args.add(&self.block_timestamp);
         args.add(&self.executed_receipt_id);
         args.add(&self.index_in_execution_outcome);
         args.add(&self.produced_receipt_id);

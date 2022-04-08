@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
         //     start_block_height: 42376888 //42376923, // want to start from the first to fill in the cache correctly // 42376888
         s3_bucket_name: "near-lake-data-mainnet".to_string(),
         s3_region_name: "eu-central-1".to_string(),
-        start_block_height: 12117824, //12117820, //9823031, //9820214, // 9820210 9823031 12117827 data receipt
+        start_block_height: 9820210, //9825208, //12117820, //9823031, //9820214, // 9820210 9823031 12117827 data receipt
     };
     let stream = near_lake_framework::streamer(config);
 
@@ -58,7 +58,6 @@ async fn main() -> anyhow::Result<()> {
     let receipts_cache: ReceiptsCache =
         std::sync::Arc::new(Mutex::new(SizedCache::with_size(100_000)));
 
-    // TODO now we ignore the errors here, we never fail. Change it
     let mut handlers = tokio_stream::wrappers::ReceiverStream::new(stream)
         .map(|streamer_message| {
             handle_streamer_message(
@@ -69,7 +68,18 @@ async fn main() -> anyhow::Result<()> {
         })
         .buffer_unordered(1usize);
 
-    while let Some(_handle_message) = handlers.next().await {}
+    let mut time_now = std::time::Instant::now();
+    while let Some(handle_message) = handlers.next().await {
+        match handle_message {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(anyhow::anyhow!(e));
+            }
+        }
+        let elapsed = time_now.elapsed();
+        println!("Elapsed: {:.3?}", elapsed);
+        time_now = std::time::Instant::now();
+    }
 
     Ok(())
 }
@@ -79,24 +89,19 @@ async fn handle_streamer_message(
     pool: &sqlx::Pool<sqlx::MySql>,
     receipts_cache: ReceiptsCache,
 ) -> anyhow::Result<()> {
-    // TODO: fault-tolerance
-    // we need to have the ability to write the same block again
-    // we need to fail if something goes wrong
     eprintln!(
         "{} / shards {}",
         streamer_message.block.header.height,
         streamer_message.shards.len()
     );
-    // eprintln!(
-    //     "ReceiptsCache #{} \n {:#?}",
-    //     streamer_message.block.header.height, &receipts_cache
-    // );
+
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
     let chunks_future = db_adapters::chunks::store_chunks(
         pool,
         &streamer_message.shards,
         &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
     );
 
     let transactions_future = db_adapters::transactions::store_transactions(
@@ -138,8 +143,6 @@ async fn handle_streamer_message(
     try_join!(blocks_future, chunks_future, transactions_future)?;
     try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
     try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
-
-    eprintln!("finished");
     Ok(())
 }
 

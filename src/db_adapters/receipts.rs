@@ -246,6 +246,11 @@ async fn find_tx_hashes_for_receipts(
         if strict_mode {
             panic!("all the transactions should be found by this place");
         }
+        eprintln!(
+            "The block {} has {} receipt(s) we still need to put to the DB later",
+            block_height,
+            receipts.len()
+        );
         let mut args = sqlx::mysql::MySqlArguments::default();
         args.add(block_height);
         let query = "INSERT IGNORE INTO _blocks_to_rerun VALUES (?)";

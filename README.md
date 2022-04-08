@@ -17,6 +17,7 @@ sqlx migrate run
 sudo apt install git build-essential pkg-config libssl-dev tmux
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
+ulimit -n 30000
 cargo build
 cargo run
 ```

@@ -265,8 +265,8 @@ async fn find_transaction_hashes_for_data_receipts(
     data_ids: &[String],
     receipts: &[near_indexer_primitives::views::ReceiptView],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
-    let query = "SELECT action_receipt_output_data.output_data_id, receipts.originated_from_transaction_hash
-                        FROM action_receipt_output_data JOIN receipts ON action_receipt_output_data.output_from_receipt_id = receipts.receipt_id
+    let query = "SELECT action_receipt_output_data.output_data_id, data_receipts.originated_from_transaction_hash
+                        FROM action_receipt_output_data JOIN data_receipts ON action_receipt_output_data.output_from_receipt_id = data_receipts.receipt_id
                         WHERE action_receipt_output_data.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
     let mut args = sqlx::mysql::MySqlArguments::default();
     data_ids.iter().for_each(|data_id| {
@@ -316,8 +316,8 @@ async fn find_transaction_hashes_for_receipts_via_outcomes(
     pool: &sqlx::Pool<sqlx::MySql>,
     action_receipt_ids: &[String],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
-    let query = "SELECT execution_outcome_receipts.produced_receipt_id, receipts.originated_from_transaction_hash
-                        FROM execution_outcome_receipts JOIN receipts ON execution_outcome_receipts.executed_receipt_id = receipts.receipt_id
+    let query = "SELECT execution_outcome_receipts.produced_receipt_id, action_receipts.originated_from_transaction_hash
+                        FROM execution_outcome_receipts JOIN action_receipts ON execution_outcome_receipts.executed_receipt_id = action_receipts.receipt_id
                         WHERE execution_outcome_receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(action_receipt_ids.len())?;
     let mut args = sqlx::mysql::MySqlArguments::default();
     action_receipt_ids.iter().for_each(|data_id| {

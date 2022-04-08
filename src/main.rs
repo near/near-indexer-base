@@ -38,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ssh telezhnaya@34.159.101.127
     // --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 9820210
+    // cargo run -- --non-strict-mode --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 57526000
     let opts: Opts = Opts::parse();
     let config = near_lake_framework::LakeConfig {
         s3_bucket_name: opts.s3_bucket_name.clone(),

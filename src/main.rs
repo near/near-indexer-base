@@ -99,13 +99,13 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    if streamer_message.block.header.height % 100 == 0 {
+    // if streamer_message.block.header.height % 100 == 0 {
         eprintln!(
             "{} / shards {}",
             streamer_message.block.header.height,
             streamer_message.shards.len()
         );
-    }
+    // }
 
     let mut time_now = std::time::Instant::now();
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
@@ -129,8 +129,8 @@ async fn handle_streamer_message(
 
     let elapsed = time_now.elapsed();
     println!(
-        "Elapsed time spent on first 3 futures {}: {:.3?}",
-        block_height, elapsed
+        "Elapsed time spent on first 3 futures: {:.3?}",
+         elapsed
     );
     time_now = std::time::Instant::now();
 
@@ -149,8 +149,8 @@ async fn handle_streamer_message(
 
     let elapsed = time_now.elapsed();
     println!(
-        "Elapsed time spent on receipt future {}: {:.3?}",
-        block_height, elapsed
+        "Elapsed time spent on receipt future: {:.3?}",
+         elapsed
     );
     time_now = std::time::Instant::now();
 
@@ -177,8 +177,8 @@ async fn handle_streamer_message(
     try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
     let elapsed = time_now.elapsed();
     println!(
-        "Elapsed time spent on last 2 futures {}: {:.3?}",
-        block_height, elapsed
+        "Elapsed time spent on last 2 futures: {:.3?}",
+         elapsed
     );
     time_now = std::time::Instant::now();
     Ok(streamer_message.block.header.height)

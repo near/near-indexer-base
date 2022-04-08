@@ -36,7 +36,9 @@ pub type ReceiptsCache =
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
+    // ssh telezhnaya@34.159.101.127
     // --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 9820210
+    // cargo run -- --non-strict-mode --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 57350000
     let opts: Opts = Opts::parse();
     let config = near_lake_framework::LakeConfig {
         s3_bucket_name: opts.s3_bucket_name.clone(),
@@ -71,9 +73,17 @@ async fn main() -> anyhow::Result<()> {
         })
         .buffer_unordered(1usize);
 
+    // let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
-            Ok(_) => {}
+            Ok(block_height) => {
+                // let elapsed = time_now.elapsed();
+                // println!(
+                //     "Elapsed time spent on block {}: {:.3?}",
+                //     block_height, elapsed
+                // );
+                // time_now = std::time::Instant::now();
+            }
             Err(e) => {
                 return Err(anyhow::anyhow!(e));
             }
@@ -88,7 +98,7 @@ async fn handle_streamer_message(
     pool: &sqlx::Pool<sqlx::MySql>,
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<u64> {
     if streamer_message.block.header.height % 100 == 0 {
         eprintln!(
             "{} / shards {}",
@@ -147,7 +157,7 @@ async fn handle_streamer_message(
     try_join!(blocks_future, chunks_future, transactions_future)?;
     try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
     try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
-    Ok(())
+    Ok(streamer_message.block.header.height)
 }
 
 fn init_tracing() {

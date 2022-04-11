@@ -73,16 +73,16 @@ async fn main() -> anyhow::Result<()> {
         })
         .buffer_unordered(1usize);
 
-    // let mut time_now = std::time::Instant::now();
+    let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
             Ok(block_height) => {
-                // let elapsed = time_now.elapsed();
-                // println!(
-                //     "Elapsed time spent on block {}: {:.3?}",
-                //     block_height, elapsed
-                // );
-                // time_now = std::time::Instant::now();
+                let elapsed = time_now.elapsed();
+                println!(
+                    "Elapsed time spent on block {}: {:.3?}",
+                    block_height, elapsed
+                );
+                time_now = std::time::Instant::now();
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(e));

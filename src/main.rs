@@ -161,7 +161,7 @@ async fn handle_streamer_message(
 }
 
 fn init_tracing() {
-    let mut env_filter = EnvFilter::new("near_lake_framework=info");
+    let mut env_filter = EnvFilter::new("near_lake_framework=debug");
 
     if let Ok(rust_log) = std::env::var("RUST_LOG") {
         if !rust_log.is_empty() {

@@ -199,37 +199,6 @@ impl ActionReceiptAction {
 }
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
-pub struct ActionReceiptInputData {
-    pub block_timestamp: BigDecimal,
-    pub input_to_receipt_id: String,
-    pub input_data_id: String,
-}
-
-impl ActionReceiptInputData {
-    pub fn from_data_id(block_timestamp: u64, receipt_id: String, data_id: String) -> Self {
-        Self {
-            block_timestamp: block_timestamp.into(),
-            input_to_receipt_id: receipt_id,
-            input_data_id: data_id,
-        }
-    }
-
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
-        args.add(&self.block_timestamp);
-        args.add(&self.input_to_receipt_id);
-        args.add(&self.input_data_id);
-    }
-
-    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO action_receipt_input_data VALUES",
-            items_count,
-            ActionReceiptInputData::field_count(),
-        )
-    }
-}
-
-#[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct ActionReceiptOutputData {
     pub block_timestamp: BigDecimal,
     pub output_from_receipt_id: String,

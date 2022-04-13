@@ -434,27 +434,6 @@ async fn store_receipt_actions(
         .flatten()
         .collect();
 
-    let receipt_action_input_data: Vec<models::ActionReceiptInputData> = receipts
-        .iter()
-        .filter_map(|(_, _, receipt)| {
-            if let near_indexer_primitives::views::ReceiptEnumView::Action {
-                input_data_ids, ..
-            } = &receipt.receipt
-            {
-                Some(input_data_ids.iter().map(move |data_id| {
-                    models::ActionReceiptInputData::from_data_id(
-                        block_timestamp,
-                        receipt.receipt_id.to_string(),
-                        data_id.to_string(),
-                    )
-                }))
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .collect();
-
     let receipt_action_output_data: Vec<models::ActionReceiptOutputData> = receipts
         .iter()
         .filter_map(|(_, _, receipt)| {
@@ -480,7 +459,6 @@ async fn store_receipt_actions(
     try_join!(
         store_action_receipts(pool, &receipt_actions),
         store_action_receipt_actions(pool, &receipt_action_actions),
-        store_action_receipts_input_data(pool, &receipt_action_input_data),
         store_action_receipts_output_data(pool, &receipt_action_output_data),
     )?;
 
@@ -521,26 +499,6 @@ async fn store_action_receipt_actions(
         });
 
         let query = models::receipts::ActionReceiptAction::get_query(action_receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
-
-    Ok(())
-}
-
-async fn store_action_receipts_input_data(
-    pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: &[models::ActionReceiptInputData],
-) -> anyhow::Result<()> {
-    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut action_receipts_count = 0;
-
-        action_receipts_part.iter().for_each(|action_receipt| {
-            action_receipt.add_to_args(&mut args);
-            action_receipts_count += 1;
-        });
-
-        let query = models::receipts::ActionReceiptInputData::get_query(action_receipts_count)?;
         sqlx::query_with(&query, args).execute(pool).await?;
     }
 

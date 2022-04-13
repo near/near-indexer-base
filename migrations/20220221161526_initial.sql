@@ -90,24 +90,7 @@ CREATE TABLE action_receipts__actions
 --           (action_receipt_actions.args ->> 'args_json') IS NOT NULL;
 );
 
-CREATE TABLE action_receipts__input_data
-(
-    block_hash           text           NOT NULL,
-    block_timestamp      numeric(20, 0) NOT NULL,
-    receipt_id           text           NOT NULL,
-    input_data_id        text           NOT NULL,
-    chunk_index_in_block integer        NOT NULL,
-    index_in_chunk       integer        NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id, input_data_id), -- unique (receipt_id, input_data_id)
-    KEY (block_timestamp) USING HASH,
-    KEY (input_data_id) USING HASH,
-    KEY (receipt_id) USING HASH
-);
-
-CREATE TABLE action_receipts__output_data
+CREATE TABLE action_receipts__outputs
 (
     block_hash           text           NOT NULL,
     block_timestamp      numeric(20, 0) NOT NULL,

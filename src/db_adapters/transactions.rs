@@ -22,9 +22,9 @@ pub(crate) async fn store_transactions(
                     usize,
                     &near_indexer_primitives::IndexerTransactionWithOutcome,
                 )>>(),
-                &chunk.header.chunk_hash,
                 block_hash,
                 block_timestamp,
+                &chunk.header,
                 "",
                 receipts_cache.clone(),
             )
@@ -40,9 +40,9 @@ async fn store_chunk_transactions(
         usize,
         &near_indexer_primitives::IndexerTransactionWithOutcome,
     )>,
-    chunk_hash: &near_indexer_primitives::CryptoHash,
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
+    chunk_view: &near_indexer_primitives::views::ChunkHeaderView,
     // hack for supporting duplicated transaction hashes. Empty for most of transactions
     // TODO it's a rudiment of previous solution. Create the solution again
     transaction_hash_suffix: &str,
@@ -82,8 +82,8 @@ async fn store_chunk_transactions(
                 &transaction_hash,
                 &converted_into_receipt_id.to_string(),
                 block_hash,
-                chunk_hash,
                 block_timestamp,
+                chunk_view,
                 *index as i32,
             )
             .add_to_args(&mut args);

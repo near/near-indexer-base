@@ -6,6 +6,7 @@ use crate::models;
 pub(crate) async fn store_execution_outcomes(
     pool: &sqlx::Pool<sqlx::MySql>,
     shards: &[near_indexer_primitives::IndexerShard],
+    block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
@@ -14,6 +15,7 @@ pub(crate) async fn store_execution_outcomes(
             pool,
             &shard.receipt_execution_outcomes,
             shard.shard_id,
+            block_hash,
             block_timestamp,
             std::sync::Arc::clone(&receipts_cache),
         )
@@ -27,13 +29,14 @@ pub async fn store_execution_outcomes_for_chunk(
     pool: &sqlx::Pool<sqlx::MySql>,
     execution_outcomes: &[near_indexer_primitives::IndexerExecutionOutcomeWithReceipt],
     shard_id: near_indexer_primitives::types::ShardId,
+    block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
-    let mut outcome_models: Vec<models::execution_outcomes::ExecutionOutcome> = vec![];
-    let mut outcome_receipt_models: Vec<models::execution_outcomes::ExecutionOutcomeReceipt> =
-        vec![];
+    let mut outcome_models: Vec<models::ExecutionOutcome> = vec![];
+    let mut outcome_receipt_models: Vec<models::ExecutionOutcomeReceipt> = vec![];
     let mut receipts_cache_lock = receipts_cache.lock().await;
+    let mut index_through_chunk = -1;
     for (index_in_chunk, outcome) in execution_outcomes.iter().enumerate() {
         // Trying to take the parent Transaction hash for the Receipt from ReceiptsCache
         // remove it from cache once found as it is not expected to observe the Receipt for
@@ -42,7 +45,7 @@ pub async fn store_execution_outcomes_for_chunk(
             &crate::ReceiptOrDataId::ReceiptId(outcome.execution_outcome.id),
         );
 
-        let model = models::execution_outcomes::ExecutionOutcome::from_execution_outcome(
+        let model = models::ExecutionOutcome::from_execution_outcome(
             &outcome.execution_outcome,
             index_in_chunk as i32,
             block_timestamp,
@@ -50,31 +53,28 @@ pub async fn store_execution_outcomes_for_chunk(
         );
         outcome_models.push(model);
 
-        outcome_receipt_models.extend(
-            outcome
-                .execution_outcome
-                .outcome
-                .receipt_ids
-                .iter()
-                .enumerate()
-                .map(|(index, receipt_id)| {
-                    // if we have `parent_transaction_hash` from cache, then we put all "produced" Receipt IDs
-                    // as key and `parent_transaction_hash` as value, so the Receipts from one of the next blocks
-                    // could find their parents in cache
-                    if let Some(transaction_hash) = &parent_transaction_hash {
-                        receipts_cache_lock.cache_set(
-                            crate::ReceiptOrDataId::ReceiptId(*receipt_id),
-                            transaction_hash.clone(),
-                        );
-                    }
-                    models::execution_outcomes::ExecutionOutcomeReceipt {
-                        block_timestamp: block_timestamp.into(),
-                        executed_receipt_id: outcome.execution_outcome.id.to_string(),
-                        index_in_execution_outcome: index as i32,
-                        produced_receipt_id: receipt_id.to_string(),
-                    }
-                }),
-        );
+        outcome_receipt_models.extend(outcome.execution_outcome.outcome.receipt_ids.iter().map(
+            |receipt_id| {
+                // if we have `parent_transaction_hash` from cache, then we put all "produced" Receipt IDs
+                // as key and `parent_transaction_hash` as value, so the Receipts from one of the next blocks
+                // could find their parents in cache
+                if let Some(transaction_hash) = &parent_transaction_hash {
+                    receipts_cache_lock.cache_set(
+                        crate::ReceiptOrDataId::ReceiptId(*receipt_id),
+                        transaction_hash.clone(),
+                    );
+                }
+                index_through_chunk += 1;
+                models::ExecutionOutcomeReceipt {
+                    block_hash: block_hash.to_string(),
+                    block_timestamp: block_timestamp.into(),
+                    executed_receipt_id: outcome.execution_outcome.id.to_string(),
+                    produced_receipt_id: receipt_id.to_string(),
+                    chunk_index_in_block: shard_id as i32,
+                    index_in_chunk: index_through_chunk,
+                }
+            },
+        ));
     }
 
     drop(receipts_cache_lock);
@@ -92,8 +92,7 @@ pub async fn store_execution_outcomes_for_chunk(
                 execution_outcomes_count += 1;
             });
 
-        let query =
-            models::execution_outcomes::ExecutionOutcome::get_query(execution_outcomes_count)?;
+        let query = models::ExecutionOutcome::get_query(execution_outcomes_count)?;
         sqlx::query_with(&query, args).execute(pool).await?;
     }
 
@@ -108,8 +107,7 @@ pub async fn store_execution_outcomes_for_chunk(
             outcome_receipts_count += 1;
         });
 
-        let query =
-            models::execution_outcomes::ExecutionOutcomeReceipt::get_query(outcome_receipts_count)?;
+        let query = models::ExecutionOutcomeReceipt::get_query(outcome_receipts_count)?;
         sqlx::query_with(&query, args).execute(pool).await?;
     }
 

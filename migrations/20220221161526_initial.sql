@@ -13,6 +13,9 @@
 -- block_hash is shard_id everywhere because it make most of the joins faster
 -- UNIQUE KEY usually contains block_hash because of SingleStore limitations
 
+-- todo index_in_chunk, chunk_index_in_block may be partially broken because of multiple migrations, renaming, etc
+-- it's ok for stress testing purposes, but for the production we need to run it from scratch
+
 -- update_reason options:
 --     {
 --         'TRANSACTION_PROCESSING',
@@ -116,7 +119,7 @@ CREATE TABLE action_receipts
     chunk_hash                       text           NOT NULL,
     block_timestamp                  numeric(20, 0) NOT NULL,
     chunk_index_in_block             integer        NOT NULL,
-    index_in_chunk                   integer        NOT NULL,
+    receipt_index_in_chunk           integer        NOT NULL, -- goes both through action and data receipts
     predecessor_account_id           text           NOT NULL,
     receiver_account_id              text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
@@ -126,7 +129,7 @@ CREATE TABLE action_receipts
     gas_price                        numeric(45, 0) NOT NULL,
 
     SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
+    SORT KEY (block_timestamp, chunk_index_in_block, receipt_index_in_chunk),
     UNIQUE KEY (block_hash, receipt_id), -- receipt_id is unique
     KEY (block_hash) USING HASH,
     KEY (chunk_hash) USING HASH,
@@ -181,7 +184,7 @@ CREATE TABLE data_receipts
     chunk_hash                       text           NOT NULL,
     block_timestamp                  numeric(20, 0) NOT NULL,
     chunk_index_in_block             integer        NOT NULL,
-    index_in_chunk                   integer        NOT NULL,
+    receipt_index_in_chunk           integer        NOT NULL, -- goes both through action and data receipts
     predecessor_account_id           text           NOT NULL,
     receiver_account_id              text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
@@ -190,7 +193,7 @@ CREATE TABLE data_receipts
     data                             longblob,
 
     SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
+    SORT KEY (block_timestamp, chunk_index_in_block, receipt_index_in_chunk),
     UNIQUE KEY (block_hash, receipt_id), -- receipt_id is unique
     KEY (receipt_id) USING HASH,
     KEY (data_id) USING HASH,
@@ -237,7 +240,6 @@ CREATE TABLE execution_outcomes
     tokens_burnt         numeric(45, 0) NOT NULL,
     executor_account_id  text           NOT NULL,
     status               text           NOT NULL,
-    shard_id             numeric(20, 0) NOT NULL,
 
     SHARD KEY (block_hash),
     SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),

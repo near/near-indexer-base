@@ -1,13 +1,33 @@
 use crate::models;
 
+use futures::future::try_join_all;
 use itertools::Itertools;
 
-// todo recheck first block on mainnet. Looks like we miss the data in S3
 pub(crate) async fn store_account_changes(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    shards: &[near_indexer_primitives::IndexerShard],
+    block_hash: &near_indexer_primitives::CryptoHash,
+    block_timestamp: u64,
+) -> anyhow::Result<()> {
+    let futures = shards.iter().map(|shard| {
+        store_account_changes_for_chunk(
+            pool,
+            &shard.state_changes,
+            block_hash,
+            block_timestamp,
+            shard.shard_id,
+        )
+    });
+
+    try_join_all(futures).await.map(|_| ())
+}
+
+async fn store_account_changes_for_chunk(
     pool: &sqlx::Pool<sqlx::MySql>,
     state_changes: &near_indexer_primitives::views::StateChangesView,
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
+    shard_id: near_indexer_primitives::types::ShardId,
 ) -> anyhow::Result<()> {
     if state_changes.is_empty() {
         return Ok(());
@@ -20,6 +40,7 @@ pub(crate) async fn store_account_changes(
                 state_change,
                 block_hash,
                 block_timestamp,
+                shard_id as i32,
                 0, // we will fill it later
             )
         })
@@ -30,7 +51,7 @@ pub(crate) async fn store_account_changes(
         let mut changes_count = 0;
 
         account_changes_part.for_each(|(i, mut account_change)| {
-            account_change.index_in_block = i as i32;
+            account_change.index_in_chunk = i as i32;
             account_change.add_to_args(&mut args);
             changes_count += 1;
         });

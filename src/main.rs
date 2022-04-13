@@ -2,7 +2,6 @@
 use cached::SizedCache;
 use clap::Parser;
 use dotenv::dotenv;
-use futures::future::try_join_all;
 use futures::{try_join, StreamExt};
 use std::env;
 use tokio::sync::Mutex;
@@ -137,22 +136,17 @@ async fn handle_streamer_message(
     let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
         pool,
         &streamer_message.shards,
+        &streamer_message.block.header.hash,
         streamer_message.block.header.timestamp,
         std::sync::Arc::clone(&receipts_cache),
     );
 
-    let account_changes_future = async {
-        let futures = streamer_message.shards.iter().map(|shard| {
-            db_adapters::account_changes::store_account_changes(
-                pool,
-                &shard.state_changes,
-                &streamer_message.block.header.hash,
-                streamer_message.block.header.timestamp,
-            )
-        });
-
-        try_join_all(futures).await.map(|_| ())
-    };
+    let account_changes_future = db_adapters::account_changes::store_account_changes(
+        pool,
+        &streamer_message.shards,
+        &streamer_message.block.header.hash,
+        streamer_message.block.header.timestamp,
+    );
 
     try_join!(blocks_future, chunks_future, transactions_future)?;
     try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work

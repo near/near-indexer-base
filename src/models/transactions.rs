@@ -8,10 +8,11 @@ use crate::models::{FieldCount, PrintEnum};
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct Transaction {
     pub transaction_hash: String,
-    pub included_in_block_hash: String,
-    pub included_in_chunk_hash: String,
-    pub index_in_chunk: i32,
+    pub block_hash: String,
+    pub chunk_hash: String,
     pub block_timestamp: BigDecimal,
+    pub chunk_index_in_block: i32,
+    pub index_in_chunk: i32,
     pub signer_account_id: String,
     pub signer_public_key: String,
     pub nonce: BigDecimal,
@@ -30,14 +31,16 @@ impl Transaction {
         transaction_hash: &str,
         converted_into_receipt_id: &str,
         block_hash: &near_indexer_primitives::CryptoHash,
-        chunk_hash: &near_indexer_primitives::CryptoHash,
         block_timestamp: u64,
+        chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
         index_in_chunk: i32,
     ) -> Self {
         Self {
             transaction_hash: transaction_hash.to_string(),
-            included_in_block_hash: block_hash.to_string(),
+            block_hash: block_hash.to_string(),
+            chunk_hash: chunk_header.chunk_hash.to_string(),
             block_timestamp: block_timestamp.into(),
+            chunk_index_in_block: chunk_header.shard_id as i32,
             index_in_chunk,
             nonce: tx.transaction.nonce.into(),
             signer_account_id: tx.transaction.signer_id.to_string(),
@@ -45,7 +48,6 @@ impl Transaction {
             signature: tx.transaction.signature.to_string(),
             receiver_account_id: tx.transaction.receiver_id.to_string(),
             converted_into_receipt_id: converted_into_receipt_id.to_string(),
-            included_in_chunk_hash: chunk_hash.to_string(),
             status: tx
                 .outcome
                 .execution_outcome
@@ -68,10 +70,11 @@ impl Transaction {
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.transaction_hash);
-        args.add(&self.included_in_block_hash);
-        args.add(&self.included_in_chunk_hash);
-        args.add(&self.index_in_chunk);
+        args.add(&self.block_hash);
+        args.add(&self.chunk_hash);
         args.add(&self.block_timestamp);
+        args.add(&self.chunk_index_in_block);
+        args.add(&self.index_in_chunk);
         args.add(&self.signer_account_id);
         args.add(&self.signer_public_key);
         args.add(&self.nonce);

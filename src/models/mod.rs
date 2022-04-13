@@ -2,11 +2,9 @@ use near_indexer_primitives::views::{
     AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
 
+pub use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
 pub use near_lake_flows_into_sql::FieldCount;
-pub use receipts::{
-    ActionReceipt, ActionReceiptAction, ActionReceiptInputData, ActionReceiptOutputData,
-    DataReceipt,
-};
+pub use receipts::{ActionReceipt, ActionReceiptAction, ActionReceiptsOutput, DataReceipt};
 pub use transactions::Transaction;
 
 pub(crate) use serializers::extract_action_type_and_value_from_action_view;

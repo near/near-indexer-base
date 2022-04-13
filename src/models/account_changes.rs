@@ -7,16 +7,17 @@ use crate::models::{FieldCount, PrintEnum};
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct AccountChange {
-    pub affected_account_id: String,
-    pub changed_in_block_timestamp: BigDecimal,
-    pub changed_in_block_hash: String,
+    pub account_id: String,
+    pub block_timestamp: BigDecimal,
+    pub block_hash: String,
     pub caused_by_transaction_hash: Option<String>,
     pub caused_by_receipt_id: Option<String>,
     pub update_reason: String,
-    pub affected_account_nonstaked_balance: BigDecimal,
-    pub affected_account_staked_balance: BigDecimal,
-    pub affected_account_storage_usage: BigDecimal,
-    pub index_in_block: i32,
+    pub nonstaked_balance: BigDecimal,
+    pub staked_balance: BigDecimal,
+    pub storage_usage: BigDecimal,
+    pub chunk_index_in_block: i32,
+    pub index_in_chunk: i32,
 }
 
 impl AccountChange {
@@ -24,7 +25,8 @@ impl AccountChange {
         state_change_with_cause: &near_indexer_primitives::views::StateChangeWithCauseView,
         changed_in_block_hash: &near_indexer_primitives::CryptoHash,
         changed_in_block_timestamp: u64,
-        index_in_block: i32,
+        chunk_index_in_block: i32,
+        index_in_chunk: i32,
     ) -> Option<Self> {
         let near_indexer_primitives::views::StateChangeWithCauseView { cause, value } =
             state_change_with_cause;
@@ -42,9 +44,9 @@ impl AccountChange {
             };
 
         Some(Self {
-            affected_account_id: account_id,
-            changed_in_block_timestamp: changed_in_block_timestamp.into(),
-            changed_in_block_hash: changed_in_block_hash.to_string(),
+            account_id,
+            block_timestamp: changed_in_block_timestamp.into(),
+            block_hash: changed_in_block_hash.to_string(),
             caused_by_transaction_hash: if let near_indexer_primitives::views::StateChangeCauseView::TransactionProcessing {tx_hash } = cause {
                 Some(tx_hash.to_string())
             } else {
@@ -58,38 +60,40 @@ impl AccountChange {
                 _ => None,
             },
             update_reason: cause.print().to_string(),
-            affected_account_nonstaked_balance: if let Some(acc) = account {
+            nonstaked_balance: if let Some(acc) = account {
                 BigDecimal::from_str(acc.amount.to_string().as_str())
                     .expect("`amount` expected to be u128")
             } else {
                 BigDecimal::from(0)
             },
-            affected_account_staked_balance: if let Some(acc) = account {
+            staked_balance: if let Some(acc) = account {
                 BigDecimal::from_str(acc.locked.to_string().as_str())
                     .expect("`locked` expected to be u128")
             } else {
                 BigDecimal::from(0)
             },
-            affected_account_storage_usage: if let Some(acc) = account {
+            storage_usage: if let Some(acc) = account {
                 acc.storage_usage.into()
             } else {
                 BigDecimal::from(0)
             },
-            index_in_block
+            chunk_index_in_block,
+            index_in_chunk
         })
     }
 
     pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
-        args.add(&self.affected_account_id);
-        args.add(&self.changed_in_block_timestamp);
-        args.add(&self.changed_in_block_hash);
+        args.add(&self.account_id);
+        args.add(&self.block_timestamp);
+        args.add(&self.block_hash);
         args.add(&self.caused_by_transaction_hash);
         args.add(&self.caused_by_receipt_id);
         args.add(&self.update_reason);
-        args.add(&self.affected_account_nonstaked_balance);
-        args.add(&self.affected_account_staked_balance);
-        args.add(&self.affected_account_storage_usage);
-        args.add(&self.index_in_block);
+        args.add(&self.nonstaked_balance);
+        args.add(&self.staked_balance);
+        args.add(&self.storage_usage);
+        args.add(&self.chunk_index_in_block);
+        args.add(&self.index_in_chunk);
     }
 
     pub fn get_query(account_changes_count: usize) -> anyhow::Result<String> {

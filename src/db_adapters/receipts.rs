@@ -205,11 +205,10 @@ async fn find_tx_hashes_for_receipts(
         return Ok(tx_hashes_for_receipts);
     }
 
-    warn!(
-        target: crate::INDEXER,
-        "Looking for parent transaction hash in database for {} receipts {:#?}",
+    eprintln!(
+        "Looking for parent transaction hash in database for {} receipts", // {:#?}",
         &receipts.len(),
-        &receipts,
+      //  &receipts,
     );
 
     let (action_receipt_ids, data_ids): (Vec<String>, Vec<String>) =
@@ -224,12 +223,14 @@ async fn find_tx_hashes_for_receipts(
 
     if !data_ids.is_empty() {
         let tx_hashes_for_data_receipts =
-            find_transaction_hashes_for_data_receipts(pool, &data_ids, &receipts).await?;
+            find_transaction_hashes_for_data_receipts(pool, &data_ids).await?;
         tx_hashes_for_receipts.extend(tx_hashes_for_data_receipts.clone());
 
-        receipts.retain(|r| {
-            !tx_hashes_for_data_receipts
-                .contains_key(&crate::ReceiptOrDataId::ReceiptId(r.receipt_id))
+        receipts.retain(|r| match r.receipt {
+            ReceiptEnumView::Action { .. } => true,
+            ReceiptEnumView::Data { data_id, .. } => {
+                !tx_hashes_for_data_receipts.contains_key(&crate::ReceiptOrDataId::DataId(data_id))
+            }
         });
         if receipts.is_empty() {
             return Ok(tx_hashes_for_receipts);
@@ -280,11 +281,12 @@ async fn find_tx_hashes_for_receipts(
 async fn find_transaction_hashes_for_data_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
     data_ids: &[String],
-    receipts: &[near_indexer_primitives::views::ReceiptView],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
-    let query = "SELECT action_receipts__outputs.output_data_id, data_receipts.originated_from_transaction_hash
-                        FROM action_receipts__outputs JOIN data_receipts ON action_receipts__outputs.receipt_id = data_receipts.receipt_id
+    // TODO CURSED PLACE
+    let query = "SELECT action_receipts__outputs.output_data_id, action_receipts.originated_from_transaction_hash
+                        FROM action_receipts__outputs JOIN action_receipts ON action_receipts__outputs.receipt_id = action_receipts.receipt_id
                         WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
+
     let mut args = sqlx::mysql::MySqlArguments::default();
     data_ids.iter().for_each(|data_id| {
         args.add(data_id);
@@ -292,40 +294,20 @@ async fn find_transaction_hashes_for_data_receipts(
 
     let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
 
-    let tx_hashes_for_data_id_via_data_output_hashmap: HashMap<
-        crate::ReceiptOrDataId,
-        crate::ParentTransactionHashString,
-    > = res
+    Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
         .map(
-            |(receipt_id_string, transaction_hash_string): (String, String)| {
+            |(data_id_string, transaction_hash_string): (String, String)| {
                 (
                     crate::ReceiptOrDataId::DataId(
-                        near_indexer_primitives::CryptoHash::from_str(&receipt_id_string)
+                        near_indexer_primitives::CryptoHash::from_str(&data_id_string)
                             .expect("Failed to convert String to CryptoHash"),
                     ),
                     transaction_hash_string,
                 )
             },
         )
-        .collect();
-
-    Ok(receipts
-        .iter()
-        .filter_map(|r| match r.receipt {
-            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
-                tx_hashes_for_data_id_via_data_output_hashmap
-                    .get(&crate::ReceiptOrDataId::DataId(data_id))
-                    .map(|tx_hash| {
-                        (
-                            crate::ReceiptOrDataId::ReceiptId(r.receipt_id),
-                            tx_hash.to_string(),
-                        )
-                    })
-            }
-            _ => None,
-        })
         .collect())
 }
 
@@ -415,6 +397,7 @@ async fn store_receipt_actions(
         })
         .collect();
 
+    // TODO how to get rid of it and have the enumeration? flatmap?
     let mut index_through_chunk = -1;
     let receipt_action_actions: Vec<models::ActionReceiptAction> = receipts
         .iter()
@@ -442,7 +425,7 @@ async fn store_receipt_actions(
         .flatten()
         .collect();
 
-    let mut index_through_chunk = -1;
+    index_through_chunk = -1;
     let receipt_action_output_data: Vec<models::ActionReceiptsOutput> = receipts
         .iter()
         .filter_map(|(_, _, receipt)| {

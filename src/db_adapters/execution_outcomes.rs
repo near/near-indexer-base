@@ -36,6 +36,7 @@ pub async fn store_execution_outcomes_for_chunk(
     let mut outcome_models: Vec<models::ExecutionOutcome> = vec![];
     let mut outcome_receipt_models: Vec<models::ExecutionOutcomeReceipt> = vec![];
     let mut receipts_cache_lock = receipts_cache.lock().await;
+    // TODO how to get rid of it and have the enumeration? flatmap?
     let mut index_through_chunk = -1;
     for (index_in_chunk, outcome) in execution_outcomes.iter().enumerate() {
         // Trying to take the parent Transaction hash for the Receipt from ReceiptsCache

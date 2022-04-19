@@ -32,4 +32,4 @@ quote = "1.0.17"
 
 near-indexer-primitives = { git = "https://github.com/near/nearcore", rev = "5f09a3bf042b32d1ff26554433ad6449199ea02a" }
 near-crypto = { git = "https://github.com/near/nearcore", rev = "5f09a3bf042b32d1ff26554433ad6449199ea02a" }
-near-lake-framework = { git = "https://github.com/near/near-lake-framework", rev = "582c2996b77eb3a2ea96bca839249f55c209a015" }
+near-lake-framework = { git = "https://github.com/near/near-lake-framework", rev = "952c6c2688b22d2cdc5384c55db3e039b40e2db3" }

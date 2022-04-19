@@ -40,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
     // cargo run -- --non-strict-mode --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 57350000
     let opts: Opts = Opts::parse();
     let config = near_lake_framework::LakeConfig {
+        s3_endpoint: None,
         s3_bucket_name: opts.s3_bucket_name.clone(),
         s3_region_name: opts.s3_region_name.clone(),
         start_block_height: opts.start_block_height, // 9820210
@@ -98,13 +99,13 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    // if streamer_message.block.header.height % 100 == 0 {
-    eprintln!(
-        "{} / shards {}",
-        streamer_message.block.header.height,
-        streamer_message.shards.len()
-    );
-    // }
+    if streamer_message.block.header.height % 100 == 0 {
+        eprintln!(
+            "{} / shards {}",
+            streamer_message.block.header.height,
+            streamer_message.shards.len()
+        );
+    }
 
     // TODO retry if we lost the connection (it happened 2 times, wow)
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
@@ -156,7 +157,7 @@ async fn handle_streamer_message(
 }
 
 fn init_tracing() {
-    let mut env_filter = EnvFilter::new("near_lake_framework=debug");
+    let mut env_filter = EnvFilter::new("near_lake_framework=info");
 
     if let Ok(rust_log) = std::env::var("RUST_LOG") {
         if !rust_log.is_empty() {

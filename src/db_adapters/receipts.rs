@@ -88,6 +88,7 @@ async fn store_chunk_receipts(
     // releasing the lock
     drop(receipts_cache_lock);
 
+    // enumeration goes through all the receipts
     let enumerated_receipts_with_parent_tx: Vec<(
         usize,
         &String,
@@ -208,7 +209,7 @@ async fn find_tx_hashes_for_receipts(
     eprintln!(
         "Looking for parent transaction hash in database for {} receipts", // {:#?}",
         &receipts.len(),
-      //  &receipts,
+        //  &receipts,
     );
 
     let (action_receipt_ids, data_ids): (Vec<String>, Vec<String>) =
@@ -269,6 +270,7 @@ async fn find_tx_hashes_for_receipts(
             block_height,
             receipts.len()
         );
+        // todo should we remove this table?
         let mut args = sqlx::mysql::MySqlArguments::default();
         args.add(block_height);
         let query = "INSERT IGNORE INTO _blocks_to_rerun VALUES (?)";
@@ -282,7 +284,6 @@ async fn find_transaction_hashes_for_data_receipts(
     pool: &sqlx::Pool<sqlx::MySql>,
     data_ids: &[String],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
-    // TODO CURSED PLACE
     let query = "SELECT action_receipts__outputs.output_data_id, action_receipts.originated_from_transaction_hash
                         FROM action_receipts__outputs JOIN action_receipts ON action_receipts__outputs.receipt_id = action_receipts.receipt_id
                         WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
@@ -292,6 +293,7 @@ async fn find_transaction_hashes_for_data_receipts(
         args.add(data_id);
     });
 
+    // todo we need retry logic for all selects as well
     let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
 
     Ok(res
@@ -397,15 +399,12 @@ async fn store_receipt_actions(
         })
         .collect();
 
-    // TODO how to get rid of it and have the enumeration? flatmap?
-    let mut index_through_chunk = -1;
     let receipt_action_actions: Vec<models::ActionReceiptAction> = receipts
         .iter()
         .filter_map(|(_, _, receipt)| {
             if let near_indexer_primitives::views::ReceiptEnumView::Action { actions, .. } =
                 &receipt.receipt
             {
-                index_through_chunk += 1;
                 Some(actions.iter().map(move |action| {
                     models::ActionReceiptAction::from_action_view(
                         receipt.receipt_id.to_string(),
@@ -415,7 +414,8 @@ async fn store_receipt_actions(
                         block_hash,
                         block_timestamp,
                         chunk_header.shard_id as i32,
-                        index_through_chunk,
+                        // we fill it later because we can't enumerate before filtering finishes
+                        0,
                     )
                 }))
             } else {
@@ -423,9 +423,13 @@ async fn store_receipt_actions(
             }
         })
         .flatten()
+        .enumerate()
+        .map(|(i, mut action)| {
+            action.index_in_chunk = i as i32;
+            action
+        })
         .collect();
 
-    index_through_chunk = -1;
     let receipt_action_output_data: Vec<models::ActionReceiptsOutput> = receipts
         .iter()
         .filter_map(|(_, _, receipt)| {
@@ -434,7 +438,6 @@ async fn store_receipt_actions(
                 ..
             } = &receipt.receipt
             {
-                index_through_chunk += 1;
                 Some(output_data_receivers.iter().map(move |receiver| {
                     models::ActionReceiptsOutput::from_data_receiver(
                         receipt.receipt_id.to_string(),
@@ -442,7 +445,8 @@ async fn store_receipt_actions(
                         block_hash,
                         block_timestamp,
                         chunk_header.shard_id as i32,
-                        index_through_chunk,
+                        // we fill it later because we can't enumerate before filtering finishes
+                        0,
                     )
                 }))
             } else {
@@ -450,73 +454,18 @@ async fn store_receipt_actions(
             }
         })
         .flatten()
+        .enumerate()
+        .map(|(i, mut output)| {
+            output.index_in_chunk = i as i32;
+            output
+        })
         .collect();
 
     try_join!(
-        store_action_receipts(pool, &receipt_actions),
-        store_action_receipt_actions(pool, &receipt_action_actions),
-        store_action_receipts_output_data(pool, &receipt_action_output_data),
+        crate::models::chunked_insert(pool, &receipt_actions, 10,),
+        crate::models::chunked_insert(pool, &receipt_action_actions, 10,),
+        crate::models::chunked_insert(pool, &receipt_action_output_data, 10,),
     )?;
-
-    Ok(())
-}
-
-async fn store_action_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: &[models::ActionReceipt],
-) -> anyhow::Result<()> {
-    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut action_receipts_count = 0;
-
-        action_receipts_part.iter().for_each(|action_receipt| {
-            action_receipt.add_to_args(&mut args);
-            action_receipts_count += 1;
-        });
-
-        let query = models::receipts::ActionReceipt::get_query(action_receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
-
-    Ok(())
-}
-
-async fn store_action_receipt_actions(
-    pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: &[models::ActionReceiptAction],
-) -> anyhow::Result<()> {
-    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut action_receipts_count = 0;
-
-        action_receipts_part.iter().for_each(|action_receipt| {
-            action_receipt.add_to_args(&mut args);
-            action_receipts_count += 1;
-        });
-
-        let query = models::receipts::ActionReceiptAction::get_query(action_receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
-
-    Ok(())
-}
-
-async fn store_action_receipts_output_data(
-    pool: &sqlx::Pool<sqlx::MySql>,
-    receipts: &[models::ActionReceiptsOutput],
-) -> anyhow::Result<()> {
-    for action_receipts_part in receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT) {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut action_receipts_count = 0;
-
-        action_receipts_part.iter().for_each(|action_receipt| {
-            action_receipt.add_to_args(&mut args);
-            action_receipts_count += 1;
-        });
-
-        let query = models::receipts::ActionReceiptsOutput::get_query(action_receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
 
     Ok(())
 }
@@ -528,34 +477,23 @@ async fn store_data_receipts(
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
     block_timestamp: u64,
 ) -> anyhow::Result<()> {
-    let data_receipts: Vec<models::DataReceipt> = receipts
-        .iter()
-        .filter_map(|(index, tx, receipt)| {
-            models::DataReceipt::try_from_data_receipt_view(
-                receipt,
-                block_hash,
-                tx,
-                chunk_header,
-                *index as i32,
-                block_timestamp,
-            )
-            .ok()
-        })
-        .collect();
-
-    for data_receipts_part in data_receipts.chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
-    {
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        let mut data_receipts_count = 0;
-
-        data_receipts_part.iter().for_each(|data_receipt| {
-            data_receipt.add_to_args(&mut args);
-            data_receipts_count += 1;
-        });
-
-        let query = models::receipts::DataReceipt::get_query(data_receipts_count)?;
-        sqlx::query_with(&query, args).execute(pool).await?;
-    }
-
-    Ok(())
+    crate::models::chunked_insert(
+        pool,
+        &receipts
+            .iter()
+            .filter_map(|(index, tx, receipt)| {
+                models::DataReceipt::try_from_data_receipt_view(
+                    receipt,
+                    block_hash,
+                    tx,
+                    chunk_header,
+                    *index as i32,
+                    block_timestamp,
+                )
+                .ok()
+            })
+            .collect::<Vec<models::DataReceipt>>(),
+        10,
+    )
+    .await
 }

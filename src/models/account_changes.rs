@@ -47,13 +47,13 @@ impl AccountChange {
             account_id,
             block_timestamp: changed_in_block_timestamp.into(),
             block_hash: changed_in_block_hash.to_string(),
-            caused_by_transaction_hash: if let near_indexer_primitives::views::StateChangeCauseView::TransactionProcessing {tx_hash } = cause {
+            caused_by_transaction_hash: if let near_indexer_primitives::views::StateChangeCauseView::TransactionProcessing { tx_hash } = cause {
                 Some(tx_hash.to_string())
             } else {
                 None
             },
             caused_by_receipt_id: match cause {
-                near_indexer_primitives::views::StateChangeCauseView::ActionReceiptProcessingStarted { receipt_hash} => Some(receipt_hash.to_string()),
+                near_indexer_primitives::views::StateChangeCauseView::ActionReceiptProcessingStarted { receipt_hash } => Some(receipt_hash.to_string()),
                 near_indexer_primitives::views::StateChangeCauseView::ActionReceiptGasReward { receipt_hash } => Some(receipt_hash.to_string()),
                 near_indexer_primitives::views::StateChangeCauseView::ReceiptProcessing { receipt_hash } => Some(receipt_hash.to_string()),
                 near_indexer_primitives::views::StateChangeCauseView::PostponedReceipt { receipt_hash } => Some(receipt_hash.to_string()),
@@ -81,8 +81,10 @@ impl AccountChange {
             index_in_chunk
         })
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for AccountChange {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.account_id);
         args.add(&self.block_timestamp);
         args.add(&self.block_hash);
@@ -96,11 +98,15 @@ impl AccountChange {
         args.add(&self.index_in_chunk);
     }
 
-    pub fn get_query(account_changes_count: usize) -> anyhow::Result<String> {
+    fn get_query(account_changes_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO account_changes VALUES",
             account_changes_count,
             AccountChange::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "account_changes".to_string()
     }
 }

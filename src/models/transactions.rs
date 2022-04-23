@@ -67,8 +67,10 @@ impl Transaction {
             .expect("`token_burnt` must be u128"),
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for Transaction {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.transaction_hash);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -86,11 +88,15 @@ impl Transaction {
         args.add(&self.receipt_conversion_tokens_burnt);
     }
 
-    pub fn get_query(transactions_count: usize) -> anyhow::Result<String> {
+    fn get_query(transactions_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO transactions VALUES",
             transactions_count,
             Transaction::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "transactions".to_string()
     }
 }

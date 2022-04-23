@@ -17,6 +17,9 @@ mod models;
 // TODO naming
 pub(crate) const INDEXER: &str = "indexer";
 
+const INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+const MAX_DELAY_TIME: std::time::Duration = std::time::Duration::from_secs(120);
+
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ReceiptOrDataId {
     ReceiptId(near_indexer_primitives::CryptoHash),
@@ -43,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
         s3_endpoint: None,
         s3_bucket_name: opts.s3_bucket_name.clone(),
         s3_region_name: opts.s3_region_name.clone(),
-        start_block_height: opts.start_block_height, // 9820210
+        start_block_height: opts.start_block_height,
     };
 
     let pool = sqlx::MySqlPool::connect(&env::var("DATABASE_URL")?).await?;
@@ -99,13 +102,11 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    if streamer_message.block.header.height % 100 == 0 {
-        eprintln!(
-            "{} / shards {}",
-            streamer_message.block.header.height,
-            streamer_message.shards.len()
-        );
-    }
+    eprintln!(
+        "{} / shards {}",
+        streamer_message.block.header.height,
+        streamer_message.shards.len()
+    );
 
     // TODO retry if we lost the connection (it happened 2 times, wow)
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);

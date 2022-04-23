@@ -40,8 +40,10 @@ impl ExecutionOutcome {
             status: execution_outcome.outcome.status.print().to_string(),
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for ExecutionOutcome {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
@@ -53,12 +55,16 @@ impl ExecutionOutcome {
         args.add(&self.status);
     }
 
-    pub fn get_query(execution_outcome_count: usize) -> anyhow::Result<String> {
+    fn get_query(execution_outcome_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO execution_outcomes VALUES",
             execution_outcome_count,
             ExecutionOutcome::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "execution_outcomes".to_string()
     }
 }
 
@@ -72,8 +78,8 @@ pub struct ExecutionOutcomeReceipt {
     pub index_in_chunk: i32,
 }
 
-impl ExecutionOutcomeReceipt {
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for ExecutionOutcomeReceipt {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.executed_receipt_id);
@@ -82,11 +88,15 @@ impl ExecutionOutcomeReceipt {
         args.add(&self.index_in_chunk);
     }
 
-    pub fn get_query(execution_outcome_receipt_count: usize) -> anyhow::Result<String> {
+    fn get_query(execution_outcome_receipt_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO execution_outcomes__receipts VALUES",
             execution_outcome_receipt_count,
             ExecutionOutcomeReceipt::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "execution_outcomes__receipts".to_string()
     }
 }

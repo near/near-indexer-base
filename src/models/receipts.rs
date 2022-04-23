@@ -49,8 +49,10 @@ impl DataReceipt {
             Err(anyhow::anyhow!("Given ReceiptView is not of Data variant"))
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for DataReceipt {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -64,12 +66,16 @@ impl DataReceipt {
         args.add(&self.data);
     }
 
-    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+    fn get_query(items_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO data_receipts VALUES",
             items_count,
             DataReceipt::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "data_receipts".to_string()
     }
 }
 
@@ -126,8 +132,10 @@ impl ActionReceipt {
             ))
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for ActionReceipt {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -142,12 +150,16 @@ impl ActionReceipt {
         args.add(&self.gas_price);
     }
 
-    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+    fn get_query(items_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO action_receipts VALUES",
             items_count,
             ActionReceipt::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "action_receipts".to_string()
     }
 }
 
@@ -190,8 +202,10 @@ impl ActionReceiptAction {
             index_in_chunk,
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for ActionReceiptAction {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.receipt_id);
@@ -203,12 +217,16 @@ impl ActionReceiptAction {
         args.add(&self.index_in_chunk);
     }
 
-    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+    fn get_query(items_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO action_receipts__actions VALUES",
             items_count,
             ActionReceiptAction::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "action_receipts__actions".to_string()
     }
 }
 
@@ -242,8 +260,10 @@ impl ActionReceiptsOutput {
             index_in_chunk,
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for ActionReceiptsOutput {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.receipt_id);
@@ -253,11 +273,15 @@ impl ActionReceiptsOutput {
         args.add(&self.index_in_chunk);
     }
 
-    pub fn get_query(items_count: usize) -> anyhow::Result<String> {
+    fn get_query(items_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO action_receipts__outputs VALUES",
             items_count,
             ActionReceiptsOutput::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "action_receipts__outputs".to_string()
     }
 }

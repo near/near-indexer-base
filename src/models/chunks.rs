@@ -1,4 +1,5 @@
 use bigdecimal::BigDecimal;
+use sqlx::mysql::MySqlArguments;
 use sqlx::Arguments;
 
 use crate::models::FieldCount;
@@ -32,8 +33,10 @@ impl Chunk {
             author_account_id: chunk_view.author.to_string(),
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for Chunk {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.block_timestamp);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -44,11 +47,15 @@ impl Chunk {
         args.add(&self.author_account_id);
     }
 
-    pub fn get_query(chunks_count: usize) -> anyhow::Result<String> {
+    fn get_query(chunks_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO chunks VALUES",
             chunks_count,
             Chunk::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "chunks".to_string()
     }
 }

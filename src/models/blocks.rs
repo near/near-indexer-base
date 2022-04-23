@@ -30,8 +30,10 @@ impl Block {
             author_account_id: block_view.author.to_string(),
         }
     }
+}
 
-    pub fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+impl crate::models::MySqlMethods for Block {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
         args.add(&self.block_height);
         args.add(&self.block_hash);
         args.add(&self.prev_block_hash);
@@ -41,11 +43,15 @@ impl Block {
         args.add(&self.author_account_id);
     }
 
-    pub fn get_query(blocks_count: usize) -> anyhow::Result<String> {
+    fn get_query(blocks_count: usize) -> anyhow::Result<String> {
         crate::models::create_query_with_placeholders(
             "INSERT IGNORE INTO blocks VALUES",
             blocks_count,
             Block::field_count(),
         )
+    }
+
+    fn name() -> String {
+        "blocks".to_string()
     }
 }

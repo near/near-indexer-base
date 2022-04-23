@@ -51,12 +51,3 @@ Second query knows that there's no need in searching for the data in the other s
 Unfortunately, this is the limitation from SingleStore, they can't use the sort index in the opposite direction, and they do not allow to have more than one sorting index per table.
 I'm considering the idea of storing everything in the opposite direction.
 I have a guess that the query "give me top N of the latest rows" is the most frequent, and it's better to optimize for it.
-
-### Processed blocks
-
-We've collected all the blocks till January 19, 2022. Next blocks will come soon.
-
-Processed:
-- _genesis - 57559700 (8)
-- 58000000 - 61560800 (5)
-- 62000000 - 63480200 (7)

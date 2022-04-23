@@ -1,3 +1,4 @@
+use futures::future::try_join_all;
 use near_indexer_primitives::views::{
     AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
@@ -20,6 +21,69 @@ pub(crate) mod transactions;
 pub trait FieldCount {
     /// Get the number of fields on a struct.
     fn field_count() -> usize;
+}
+
+pub trait MySqlMethods {
+    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments);
+
+    fn get_query(count: usize) -> anyhow::Result<String>;
+
+    fn name() -> String;
+}
+
+pub async fn chunked_insert<T: MySqlMethods + std::fmt::Debug>(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    items: &Vec<T>,
+    retry_count: usize,
+) -> anyhow::Result<()> {
+    let futures = items
+        .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
+        .map(|items_part| insert_retry_or_panic(pool, items_part, retry_count));
+    try_join_all(futures).await.map(|_| ())
+}
+
+async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    items: &[T],
+    retry_count: usize,
+) -> anyhow::Result<()> {
+    let mut interval = crate::INTERVAL;
+    let mut retry_attempt = 0usize;
+    let query = T::get_query(items.len())?;
+
+    loop {
+        if retry_attempt == retry_count {
+            return Err(anyhow::anyhow!(
+                "Failed to perform query to database after {} attempts. Stop trying.",
+                retry_count
+            ));
+        }
+        retry_attempt += 1;
+
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        for item in items {
+            item.add_to_args(&mut args);
+        }
+
+        match sqlx::query_with(&query, args).execute(pool).await {
+            Ok(_) => break,
+            Err(async_error) => {
+                tracing::error!(
+                         target: crate::INDEXER,
+                         "Error occurred during {}:\n{} were not stored. \n{:#?} \n Retrying in {} milliseconds...",
+                         async_error,
+                         &T::name(),
+                         &items,
+                         interval.as_millis(),
+                     );
+                tokio::time::sleep(interval).await;
+                if interval < crate::MAX_DELAY_TIME {
+                    interval *= 2;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn create_query_with_placeholders(

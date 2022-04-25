@@ -2,6 +2,8 @@ use futures::future::try_join_all;
 use near_indexer_primitives::views::{
     AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
+use sqlx::mysql::MySqlRow;
+use sqlx::Arguments;
 
 pub use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
 pub use near_lake_flows_into_sql::FieldCount;
@@ -33,7 +35,7 @@ pub trait MySqlMethods {
 
 pub async fn chunked_insert<T: MySqlMethods + std::fmt::Debug>(
     pool: &sqlx::Pool<sqlx::MySql>,
-    items: &Vec<T>,
+    items: &[T],
     retry_count: usize,
 ) -> anyhow::Result<()> {
     let futures = items
@@ -84,6 +86,49 @@ async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
         }
     }
     Ok(())
+}
+
+pub async fn select_retry_or_panic(
+    pool: &sqlx::Pool<sqlx::MySql>,
+    query: &str,
+    substitution_items: &[String],
+    retry_count: usize,
+) -> anyhow::Result<Vec<MySqlRow>> {
+    let mut interval = crate::INTERVAL;
+    let mut retry_attempt = 0usize;
+
+    loop {
+        if retry_attempt == retry_count {
+            return Err(anyhow::anyhow!(
+                "Failed to perform query to database after {} attempts. Stop trying.",
+                retry_count
+            ));
+        }
+        retry_attempt += 1;
+
+        let mut args = sqlx::mysql::MySqlArguments::default();
+        for item in substitution_items {
+            args.add(item);
+        }
+
+        match sqlx::query_with(query, args).fetch_all(pool).await {
+            Ok(res) => return Ok(res),
+            Err(async_error) => {
+                // todo we print here select with non-filled placeholders. It would be better to get the final select statement here
+                tracing::error!(
+                         target: crate::INDEXER,
+                         "Error occurred during {}:\nFailed SELECT:\n{}\n Retrying in {} milliseconds...",
+                         async_error,
+                    query,
+                         interval.as_millis(),
+                     );
+                tokio::time::sleep(interval).await;
+                if interval < crate::MAX_DELAY_TIME {
+                    interval *= 2;
+                }
+            }
+        }
+    }
 }
 
 fn create_query_with_placeholders(

@@ -1,3 +1,4 @@
+use crate::models::select_retry_or_panic;
 use crate::{models, ParentTransactionHashString, ReceiptOrDataId};
 use cached::Cached;
 use futures::future::try_join_all;
@@ -7,7 +8,6 @@ use near_indexer_primitives::views::ReceiptEnumView;
 use sqlx::{Arguments, Row};
 use std::collections::HashMap;
 use std::str::FromStr;
-use tracing::warn;
 
 /// Saves receipts to database
 pub(crate) async fn store_receipts(
@@ -288,14 +288,7 @@ async fn find_transaction_hashes_for_data_receipts(
                         FROM action_receipts__outputs JOIN action_receipts ON action_receipts__outputs.receipt_id = action_receipts.receipt_id
                         WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
 
-    let mut args = sqlx::mysql::MySqlArguments::default();
-    data_ids.iter().for_each(|data_id| {
-        args.add(data_id);
-    });
-
-    // todo we need retry logic for all selects as well
-    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
-
+    let res = select_retry_or_panic(pool, &query, data_ids, 10).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
@@ -320,13 +313,8 @@ async fn find_transaction_hashes_for_receipts_via_outcomes(
     let query = "SELECT execution_outcomes__receipts.produced_receipt_id, action_receipts.originated_from_transaction_hash
                         FROM execution_outcomes__receipts JOIN action_receipts ON execution_outcomes__receipts.executed_receipt_id = action_receipts.receipt_id
                         WHERE execution_outcomes__receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(action_receipt_ids.len())?;
-    let mut args = sqlx::mysql::MySqlArguments::default();
-    action_receipt_ids.iter().for_each(|data_id| {
-        args.add(data_id);
-    });
 
-    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
-
+    let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
@@ -353,13 +341,8 @@ async fn find_transaction_hashes_for_receipt_via_transactions(
                         WHERE converted_into_receipt_id IN "
         .to_owned()
         + &crate::models::create_placeholder(action_receipt_ids.len())?;
-    let mut args = sqlx::mysql::MySqlArguments::default();
-    action_receipt_ids.iter().for_each(|data_id| {
-        args.add(data_id);
-    });
 
-    let res = sqlx::query_with(&query, args).fetch_all(pool).await?;
-
+    let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))

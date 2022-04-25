@@ -1,6 +1,5 @@
 use cached::Cached;
 use futures::future::try_join_all;
-use itertools::Itertools;
 
 use crate::models;
 
@@ -32,7 +31,7 @@ pub(crate) async fn store_transactions(
 
 async fn store_chunk_transactions(
     pool: &sqlx::Pool<sqlx::MySql>,
-    transactions: &Vec<near_indexer_primitives::IndexerTransactionWithOutcome>,
+    transactions: &[near_indexer_primitives::IndexerTransactionWithOutcome],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
     chunk_view: &near_indexer_primitives::views::ChunkHeaderView,

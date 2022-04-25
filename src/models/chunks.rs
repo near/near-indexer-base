@@ -1,5 +1,4 @@
 use bigdecimal::BigDecimal;
-use sqlx::mysql::MySqlArguments;
 use sqlx::Arguments;
 
 use crate::models::FieldCount;

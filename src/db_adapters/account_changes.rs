@@ -1,7 +1,6 @@
 use crate::models;
 
 use futures::future::try_join_all;
-use itertools::Itertools;
 
 pub(crate) async fn store_account_changes(
     pool: &sqlx::Pool<sqlx::MySql>,

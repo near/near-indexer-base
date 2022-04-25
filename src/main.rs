@@ -38,9 +38,6 @@ pub type ReceiptsCache =
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
-    // ssh telezhnaya@34.159.101.127
-    // --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 9820210
-    // cargo run -- --non-strict-mode --s3-bucket-name near-lake-data-mainnet --s3-region-name eu-central-1 --start-block-height 57350000
     let opts: Opts = Opts::parse();
     let config = near_lake_framework::LakeConfig {
         s3_endpoint: None,
@@ -76,16 +73,16 @@ async fn main() -> anyhow::Result<()> {
         })
         .buffer_unordered(1usize);
 
-    // let mut time_now = std::time::Instant::now();
+    let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
             Ok(block_height) => {
-                // let elapsed = time_now.elapsed();
-                // println!(
-                //     "Elapsed time spent on block {}: {:.3?}",
-                //     block_height, elapsed
-                // );
-                // time_now = std::time::Instant::now();
+                let elapsed = time_now.elapsed();
+                println!(
+                    "Elapsed time spent on block {}: {:.3?}",
+                    block_height, elapsed
+                );
+                time_now = std::time::Instant::now();
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(e));

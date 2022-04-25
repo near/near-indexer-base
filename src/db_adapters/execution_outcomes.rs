@@ -1,7 +1,5 @@
 use cached::Cached;
 use futures::future::try_join_all;
-use std::borrow::Borrow;
-use std::ops::Deref;
 
 use crate::models;
 

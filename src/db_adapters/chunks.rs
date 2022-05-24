@@ -1,7 +1,7 @@
 use crate::models;
 
 pub(crate) async fn store_chunks(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,

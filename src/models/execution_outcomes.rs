@@ -43,7 +43,7 @@ impl ExecutionOutcome {
 }
 
 impl crate::models::MySqlMethods for ExecutionOutcome {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
@@ -55,12 +55,17 @@ impl crate::models::MySqlMethods for ExecutionOutcome {
         args.add(&self.status);
     }
 
-    fn get_query(execution_outcome_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO execution_outcomes VALUES",
-            execution_outcome_count,
-            ExecutionOutcome::field_count(),
-        )
+    fn insert_query(execution_outcome_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO execution_outcomes VALUES ".to_owned()
+            + &crate::models::create_placeholders(
+                execution_outcome_count,
+                ExecutionOutcome::field_count(),
+            )?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM execution_outcomes WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {
@@ -79,7 +84,7 @@ pub struct ExecutionOutcomeReceipt {
 }
 
 impl crate::models::MySqlMethods for ExecutionOutcomeReceipt {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.executed_receipt_id);
@@ -88,12 +93,19 @@ impl crate::models::MySqlMethods for ExecutionOutcomeReceipt {
         args.add(&self.index_in_chunk);
     }
 
-    fn get_query(execution_outcome_receipt_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO execution_outcomes__receipts VALUES",
-            execution_outcome_receipt_count,
-            ExecutionOutcomeReceipt::field_count(),
+    fn insert_query(execution_outcome_receipt_count: usize) -> anyhow::Result<String> {
+        Ok(
+            "INSERT INTO execution_outcomes__receipts VALUES ".to_owned()
+                + &crate::models::create_placeholders(
+                    execution_outcome_receipt_count,
+                    ExecutionOutcomeReceipt::field_count(),
+                )?
+                + " ON CONFLICT DO NOTHING",
         )
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM execution_outcomes__receipts WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

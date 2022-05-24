@@ -1,17 +1,19 @@
 use crate::models::select_retry_or_panic;
 use crate::{models, ParentTransactionHashString, ReceiptOrDataId};
+use bigdecimal::BigDecimal;
 use cached::Cached;
 use futures::future::try_join_all;
 use futures::try_join;
 use itertools::{Either, Itertools};
 use near_indexer_primitives::views::ReceiptEnumView;
-use sqlx::{Arguments, Row};
+use sqlx::Arguments;
+use sqlx::Row;
 use std::collections::HashMap;
 use std::str::FromStr;
 
 /// Saves receipts to database
 pub(crate) async fn store_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
@@ -32,7 +34,7 @@ pub(crate) async fn store_receipts(
                 &chunk.header,
                 block_timestamp,
                 block_height,
-                receipts_cache.clone(),
+                std::sync::Arc::clone(&receipts_cache),
             )
         });
 
@@ -40,7 +42,7 @@ pub(crate) async fn store_receipts(
 }
 
 async fn store_chunk_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     receipts: &[near_indexer_primitives::views::ReceiptView],
     block_hash: &near_indexer_primitives::CryptoHash,
@@ -149,7 +151,7 @@ async fn store_chunk_receipts(
 
 /// Looks for already created parent transaction hash for given receipts
 async fn find_tx_hashes_for_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     mut receipts: Vec<near_indexer_primitives::views::ReceiptView>,
     // TODO we need to add sort of retry logic, these vars could be helpful
@@ -262,18 +264,22 @@ async fn find_tx_hashes_for_receipts(
     }
 
     if !receipts.is_empty() {
+        eprintln!(
+            "The block {} has {} receipt(s) we still need to put to the DB later: {:?}",
+            block_height,
+            receipts.len(),
+            receipts
+                .iter()
+                .map(|r| r.receipt_id.to_string())
+                .collect::<Vec<String>>()
+        );
         if strict_mode {
             panic!("all the transactions should be found by this place");
         }
-        eprintln!(
-            "The block {} has {} receipt(s) we still need to put to the DB later",
-            block_height,
-            receipts.len()
-        );
-        // todo should we remove this table?
-        let mut args = sqlx::mysql::MySqlArguments::default();
-        args.add(block_height);
-        let query = "INSERT IGNORE INTO _blocks_to_rerun VALUES (?)";
+
+        let mut args = sqlx::postgres::PgArguments::default();
+        args.add(BigDecimal::from(block_height));
+        let query = "INSERT INTO _blocks_to_rerun VALUES ($1) ON CONFLICT DO NOTHING";
         sqlx::query_with(query, args).execute(pool).await?;
     }
 
@@ -281,12 +287,12 @@ async fn find_tx_hashes_for_receipts(
 }
 
 async fn find_transaction_hashes_for_data_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     data_ids: &[String],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let query = "SELECT action_receipts__outputs.output_data_id, action_receipts.originated_from_transaction_hash
                         FROM action_receipts__outputs JOIN action_receipts ON action_receipts__outputs.receipt_id = action_receipts.receipt_id
-                        WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(data_ids.len())?;
+                        WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(&mut 1,data_ids.len())?;
 
     let res = select_retry_or_panic(pool, &query, data_ids, 10).await?;
     Ok(res
@@ -307,12 +313,12 @@ async fn find_transaction_hashes_for_data_receipts(
 }
 
 async fn find_transaction_hashes_for_receipts_via_outcomes(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     action_receipt_ids: &[String],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let query = "SELECT execution_outcomes__receipts.produced_receipt_id, action_receipts.originated_from_transaction_hash
                         FROM execution_outcomes__receipts JOIN action_receipts ON execution_outcomes__receipts.executed_receipt_id = action_receipts.receipt_id
-                        WHERE execution_outcomes__receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(action_receipt_ids.len())?;
+                        WHERE execution_outcomes__receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(&mut 1,action_receipt_ids.len())?;
 
     let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
     Ok(res
@@ -333,14 +339,14 @@ async fn find_transaction_hashes_for_receipts_via_outcomes(
 }
 
 async fn find_transaction_hashes_for_receipt_via_transactions(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     action_receipt_ids: &[String],
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let query = "SELECT converted_into_receipt_id, transaction_hash
                         FROM transactions
                         WHERE converted_into_receipt_id IN "
         .to_owned()
-        + &crate::models::create_placeholder(action_receipt_ids.len())?;
+        + &crate::models::create_placeholder(&mut 1, action_receipt_ids.len())?;
 
     let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
     Ok(res
@@ -361,7 +367,7 @@ async fn find_transaction_hashes_for_receipt_via_transactions(
 }
 
 async fn store_receipt_actions(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     receipts: Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
     block_hash: &near_indexer_primitives::CryptoHash,
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
@@ -454,7 +460,7 @@ async fn store_receipt_actions(
 }
 
 async fn store_data_receipts(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     receipts: Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
     block_hash: &near_indexer_primitives::CryptoHash,
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,

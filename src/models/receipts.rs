@@ -52,7 +52,7 @@ impl DataReceipt {
 }
 
 impl crate::models::MySqlMethods for DataReceipt {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -66,12 +66,14 @@ impl crate::models::MySqlMethods for DataReceipt {
         args.add(&self.data);
     }
 
-    fn get_query(items_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO data_receipts VALUES",
-            items_count,
-            DataReceipt::field_count(),
-        )
+    fn insert_query(items_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO data_receipts VALUES ".to_owned()
+            + &crate::models::create_placeholders(items_count, DataReceipt::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM data_receipts WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {
@@ -135,7 +137,7 @@ impl ActionReceipt {
 }
 
 impl crate::models::MySqlMethods for ActionReceipt {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -150,12 +152,14 @@ impl crate::models::MySqlMethods for ActionReceipt {
         args.add(&self.gas_price);
     }
 
-    fn get_query(items_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO action_receipts VALUES",
-            items_count,
-            ActionReceipt::field_count(),
-        )
+    fn insert_query(items_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO action_receipts VALUES ".to_owned()
+            + &crate::models::create_placeholders(items_count, ActionReceipt::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM action_receipts WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {
@@ -205,24 +209,26 @@ impl ActionReceiptAction {
 }
 
 impl crate::models::MySqlMethods for ActionReceiptAction {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.receipt_id);
         args.add(&self.action_kind);
-        args.add(&self.args.to_string());
+        args.add(&self.args);
         args.add(&self.predecessor_account_id);
         args.add(&self.receiver_account_id);
         args.add(&self.chunk_index_in_block);
         args.add(&self.index_in_chunk);
     }
 
-    fn get_query(items_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO action_receipts__actions VALUES",
-            items_count,
-            ActionReceiptAction::field_count(),
-        )
+    fn insert_query(items_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO action_receipts__actions VALUES ".to_owned()
+            + &crate::models::create_placeholders(items_count, ActionReceiptAction::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM action_receipts__actions WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {
@@ -263,7 +269,7 @@ impl ActionReceiptsOutput {
 }
 
 impl crate::models::MySqlMethods for ActionReceiptsOutput {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
         args.add(&self.receipt_id);
@@ -273,12 +279,17 @@ impl crate::models::MySqlMethods for ActionReceiptsOutput {
         args.add(&self.index_in_chunk);
     }
 
-    fn get_query(items_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO action_receipts__outputs VALUES",
-            items_count,
-            ActionReceiptsOutput::field_count(),
-        )
+    fn insert_query(items_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO action_receipts__outputs VALUES ".to_owned()
+            + &crate::models::create_placeholders(
+                items_count,
+                ActionReceiptsOutput::field_count(),
+            )?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM action_receipts__outputs WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

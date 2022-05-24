@@ -29,7 +29,7 @@ pub(crate) struct Opts {
     /// AWS S3 bucket region
     #[clap(long)]
     pub s3_region_name: String,
-    /// Block height to start the stream from
+    /// Block height to start the stream from. If None, start from interruption
     #[clap(long, short)]
-    pub start_block_height: u64,
+    pub start_block_height: Option<u64>,
 }

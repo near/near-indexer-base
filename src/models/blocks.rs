@@ -33,7 +33,7 @@ impl Block {
 }
 
 impl crate::models::MySqlMethods for Block {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_height);
         args.add(&self.block_hash);
         args.add(&self.prev_block_hash);
@@ -43,12 +43,14 @@ impl crate::models::MySqlMethods for Block {
         args.add(&self.author_account_id);
     }
 
-    fn get_query(blocks_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO blocks VALUES",
-            blocks_count,
-            Block::field_count(),
-        )
+    fn insert_query(blocks_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO blocks VALUES ".to_owned()
+            + &crate::models::create_placeholders(blocks_count, Block::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM blocks WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

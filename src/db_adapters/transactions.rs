@@ -4,7 +4,7 @@ use futures::future::try_join_all;
 use crate::models;
 
 pub(crate) async fn store_transactions(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
@@ -21,7 +21,7 @@ pub(crate) async fn store_transactions(
                 block_hash,
                 block_timestamp,
                 &chunk.header,
-                receipts_cache.clone(),
+                std::sync::Arc::clone(&receipts_cache),
             )
         });
 
@@ -30,7 +30,7 @@ pub(crate) async fn store_transactions(
 }
 
 async fn store_chunk_transactions(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     transactions: &[near_indexer_primitives::IndexerTransactionWithOutcome],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,

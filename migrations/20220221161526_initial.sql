@@ -1,19 +1,5 @@
--- https://docs.singlestore.com/db/v7.6/en/reference/sql-reference/data-definition-language-ddl/create-table.html--create-table
--- https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/other-types.html
 
--- Short cheatsheet from the doc:
--- - all the tables in this project are columnstore tables
--- - Shard key is the way to identify which shard stores each row
--- - Unique key is a superset of the shard key
--- - There is only one sort key per table, and only one way to make fast range queries based on the sort
--- - Merging tables work fast if they have the same sort order -> we sort everything by timestamp
--- - `key ... using hash` gives fast queries by equality
--- - all the columns in hash keys should also be in shard key
--- - we don't use enum type because it' not allowed to use enums in keys
--- block_hash is shard_id everywhere because it make most of the joins faster
--- UNIQUE KEY usually contains block_hash because of SingleStore limitations
-
--- todo index_in_chunk, chunk_index_in_block may be partially broken because of multiple migrations, renaming, etc
+-- index_in_chunk, chunk_index_in_block may be partially broken because of multiple migrations, renaming, etc
 -- it's ok for stress testing purposes, but for the production we need to run it from scratch
 
 -- update_reason options:
@@ -42,14 +28,7 @@ CREATE TABLE account_changes
     storage_usage              numeric(20, 0) NOT NULL,
     chunk_index_in_block       integer        NOT NULL,
     index_in_chunk             integer        NOT NULL,
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, chunk_index_in_block, index_in_chunk),
-    KEY (account_id) USING HASH,
-    KEY (block_hash) USING HASH,
-    KEY (block_timestamp) USING HASH,
-    KEY (caused_by_receipt_id) USING HASH,
-    KEY (caused_by_transaction_hash) USING HASH
+    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
 );
 
 -- action_kind options:
@@ -69,28 +48,14 @@ CREATE TABLE action_receipts__actions
     block_timestamp        numeric(20, 0) NOT NULL,
     receipt_id             text           NOT NULL,
     action_kind            text           NOT NULL,
-    args                   json           NOT NULL,
+    -- https://docs.aws.amazon.com/redshift/latest/dg/json-functions.html
+    -- https://docs.aws.amazon.com/redshift/latest/dg/super-overview.html
+    args                   jsonb           NOT NULL,
     predecessor_account_id text           NOT NULL,
     receiver_account_id    text           NOT NULL,
     chunk_index_in_block   integer        NOT NULL,
     index_in_chunk         integer        NOT NULL,
-
---     method_name AS args::%method_name PERSISTED text,
---     KEY(method_name) USING HASH
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id, index_in_chunk), -- unique (receipt_id, index_in_chunk)
-    KEY (action_kind) USING HASH,
-    KEY (predecessor_account_id) USING HASH,
-    KEY (receiver_account_id) USING HASH,
-    KEY (block_timestamp) USING HASH,
-    KEY (receiver_account_id, block_timestamp) USING HASH
-
--- TODO json field! + discuss indexes on json fields
--- https://docs.singlestore.com/db/v7.6/en/create-your-database/physical-database-schema-design/procedures-for-physical-database-schema-design/using-json.html#indexing-data-in-json-columns
--- CREATE INDEX action_receipt_actions_args_receiver_id_idx ON action_receipt_actions ((args -> 'args_json' ->> 'receiver_id')) WHERE action_receipt_actions.action_kind = 'FUNCTION_CALL' AND
---           (action_receipt_actions.args ->> 'args_json') IS NOT NULL;
+    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
 );
 
 CREATE TABLE action_receipts__outputs
@@ -102,14 +67,7 @@ CREATE TABLE action_receipts__outputs
     receiver_account_id  text           NOT NULL,
     chunk_index_in_block integer        NOT NULL,
     index_in_chunk       integer        NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id, output_data_id), -- unique (receipt_id, output_data_id)
-    KEY (block_timestamp) USING HASH,
-    KEY (output_data_id) USING HASH,
-    KEY (receipt_id) USING HASH,
-    KEY (receiver_account_id) USING HASH
+    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
 );
 
 CREATE TABLE action_receipts
@@ -125,19 +83,10 @@ CREATE TABLE action_receipts
     originated_from_transaction_hash text           NOT NULL,
     signer_account_id                text           NOT NULL,
     signer_public_key                text           NOT NULL,
---     todo what is it? asked Marcin about that
+--     todo change logic with gas_price + gas_used
+-- https://github.com/near/near-analytics/issues/19
     gas_price                        numeric(45, 0) NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, receipt_index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id), -- receipt_id is unique
-    KEY (block_hash) USING HASH,
-    KEY (chunk_hash) USING HASH,
-    KEY (predecessor_account_id) USING HASH,
-    KEY (receiver_account_id) USING HASH,
-    KEY (block_timestamp) USING HASH,
-    KEY (originated_from_transaction_hash) USING HASH,
-    KEY (signer_account_id) USING HASH
+    PRIMARY KEY (receipt_id)
 );
 
 CREATE TABLE blocks
@@ -147,16 +96,10 @@ CREATE TABLE blocks
     prev_block_hash   text           NOT NULL,
     block_timestamp   numeric(20, 0) NOT NULL,
     total_supply      numeric(45, 0) NOT NULL,
---     todo next_block_gas_price?
+--     todo next_block_gas_price? https://github.com/near/near-analytics/issues/19
     gas_price         numeric(45, 0) NOT NULL,
     author_account_id text           NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp),
-    UNIQUE KEY (block_hash),
-    KEY (block_height) USING HASH,
-    KEY (prev_block_hash) USING HASH,
-    KEY (block_timestamp) USING HASH
+    PRIMARY KEY (block_hash)
 );
 
 CREATE TABLE chunks
@@ -169,12 +112,7 @@ CREATE TABLE chunks
     gas_limit         numeric(20, 0) NOT NULL,
     gas_used          numeric(20, 0) NOT NULL,
     author_account_id text           NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, index_in_block),
-    UNIQUE KEY (block_hash, chunk_hash), -- chunk_hash is unique
-    KEY (block_timestamp) USING HASH,
-    KEY (block_hash) USING HASH
+    PRIMARY KEY (chunk_hash)
 );
 
 CREATE TABLE data_receipts
@@ -189,20 +127,8 @@ CREATE TABLE data_receipts
     receiver_account_id              text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
     data_id                          text           NOT NULL,
-    -- https://docs.singlestore.com/managed-service/en/reference/sql-reference/data-types/blob-types.html
-    data                             longblob,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, receipt_index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id), -- receipt_id is unique
-    KEY (receipt_id) USING HASH,
-    KEY (data_id) USING HASH,
-    KEY (block_hash) USING HASH,
-    KEY (chunk_hash) USING HASH,
-    KEY (predecessor_account_id) USING HASH,
-    KEY (receiver_account_id) USING HASH,
-    KEY (block_timestamp) USING HASH,
-    KEY (originated_from_transaction_hash) USING HASH
+    data                             bytea,
+    PRIMARY KEY (receipt_id)
 );
 
 CREATE TABLE execution_outcomes__receipts
@@ -213,12 +139,7 @@ CREATE TABLE execution_outcomes__receipts
     produced_receipt_id  text           NOT NULL,
     chunk_index_in_block integer        NOT NULL,
     index_in_chunk       integer        NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, executed_receipt_id, produced_receipt_id), -- unique (executed_receipt_id, produced_receipt_id)
-    KEY (block_timestamp) USING HASH,
-    KEY (produced_receipt_id) USING HASH
+    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
 );
 
 -- status options:
@@ -240,13 +161,7 @@ CREATE TABLE execution_outcomes
     tokens_burnt         numeric(45, 0) NOT NULL,
     executor_account_id  text           NOT NULL,
     status               text           NOT NULL,
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    UNIQUE KEY (block_hash, receipt_id), -- receipt_id is unique
-    KEY (block_timestamp) USING HASH,
-    KEY (block_hash) USING HASH,
-    KEY (status) USING HASH
+    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
 );
 
 -- status options:
@@ -273,23 +188,10 @@ CREATE TABLE transactions
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
     receipt_conversion_tokens_burnt numeric(45, 0),
-
-    SHARD KEY (block_hash),
-    SORT KEY (block_timestamp, chunk_index_in_block, index_in_chunk),
-    -- todo handle tx hash collisions. it's harder than we expected.
-    -- transaction_hash is almost unique except https://github.com/near/near-indexer-for-explorer/issues/84
-    UNIQUE KEY (block_hash, transaction_hash),
-    KEY (converted_into_receipt_id) USING HASH,
-    KEY (block_hash) USING HASH,
-    KEY (block_timestamp) USING HASH,
-    KEY (chunk_hash) USING HASH,
-    KEY (signer_account_id) USING HASH,
-    KEY (signer_public_key) USING HASH,
-    KEY (receiver_account_id) USING HASH
+    PRIMARY KEY (transaction_hash)
 );
 
-CREATE ROWSTORE TABLE _blocks_to_rerun
-(
-    block_height      numeric(20, 0) NOT NULL,
+CREATE TABLE _blocks_to_rerun (
+    block_height numeric(20, 0) NOT NULL,
     PRIMARY KEY (block_height)
 );

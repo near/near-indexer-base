@@ -70,7 +70,7 @@ impl Transaction {
 }
 
 impl crate::models::MySqlMethods for Transaction {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.transaction_hash);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -88,12 +88,14 @@ impl crate::models::MySqlMethods for Transaction {
         args.add(&self.receipt_conversion_tokens_burnt);
     }
 
-    fn get_query(transactions_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO transactions VALUES",
-            transactions_count,
-            Transaction::field_count(),
-        )
+    fn insert_query(transactions_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO transactions VALUES ".to_owned()
+            + &crate::models::create_placeholders(transactions_count, Transaction::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM transactions WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

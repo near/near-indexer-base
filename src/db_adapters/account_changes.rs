@@ -3,7 +3,7 @@ use crate::models;
 use futures::future::try_join_all;
 
 pub(crate) async fn store_account_changes(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     shards: &[near_indexer_primitives::IndexerShard],
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,
@@ -22,7 +22,7 @@ pub(crate) async fn store_account_changes(
 }
 
 async fn store_account_changes_for_chunk(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     state_changes: &near_indexer_primitives::views::StateChangesView,
     block_hash: &near_indexer_primitives::CryptoHash,
     block_timestamp: u64,

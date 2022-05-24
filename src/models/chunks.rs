@@ -35,7 +35,7 @@ impl Chunk {
 }
 
 impl crate::models::MySqlMethods for Chunk {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_timestamp);
         args.add(&self.block_hash);
         args.add(&self.chunk_hash);
@@ -46,12 +46,14 @@ impl crate::models::MySqlMethods for Chunk {
         args.add(&self.author_account_id);
     }
 
-    fn get_query(chunks_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO chunks VALUES",
-            chunks_count,
-            Chunk::field_count(),
-        )
+    fn insert_query(chunks_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO chunks VALUES ".to_owned()
+            + &crate::models::create_placeholders(chunks_count, Chunk::field_count())?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM chunks WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

@@ -1,15 +1,21 @@
+use bigdecimal::BigDecimal;
 use futures::future::try_join_all;
 use near_indexer_primitives::views::{
     AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
-use sqlx::mysql::MySqlRow;
-use sqlx::Arguments;
 
+use futures::try_join;
+use num_traits::{ToPrimitive, Zero};
+use sqlx::{Arguments, Row};
+
+pub use account_changes::AccountChange;
 pub use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
 pub use near_lake_flows_into_sql::FieldCount;
 pub use receipts::{ActionReceipt, ActionReceiptAction, ActionReceiptsOutput, DataReceipt};
 pub use transactions::Transaction;
 
+use crate::models::blocks::Block;
+use crate::models::chunks::Chunk;
 pub(crate) use serializers::extract_action_type_and_value_from_action_view;
 
 pub(crate) mod account_changes;
@@ -26,15 +32,17 @@ pub trait FieldCount {
 }
 
 pub trait MySqlMethods {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments);
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments);
 
-    fn get_query(count: usize) -> anyhow::Result<String>;
+    fn insert_query(count: usize) -> anyhow::Result<String>;
+
+    fn delete_query() -> String;
 
     fn name() -> String;
 }
 
 pub async fn chunked_insert<T: MySqlMethods + std::fmt::Debug>(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     items: &[T],
     retry_count: usize,
 ) -> anyhow::Result<()> {
@@ -45,13 +53,13 @@ pub async fn chunked_insert<T: MySqlMethods + std::fmt::Debug>(
 }
 
 async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     items: &[T],
     retry_count: usize,
 ) -> anyhow::Result<()> {
     let mut interval = crate::INTERVAL;
     let mut retry_attempt = 0usize;
-    let query = T::get_query(items.len())?;
+    let query = T::insert_query(items.len())?;
 
     loop {
         if retry_attempt == retry_count {
@@ -62,7 +70,7 @@ async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
         }
         retry_attempt += 1;
 
-        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut args = sqlx::postgres::PgArguments::default();
         for item in items {
             item.add_to_args(&mut args);
         }
@@ -89,11 +97,11 @@ async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
 }
 
 pub async fn select_retry_or_panic(
-    pool: &sqlx::Pool<sqlx::MySql>,
+    pool: &sqlx::Pool<sqlx::Postgres>,
     query: &str,
     substitution_items: &[String],
     retry_count: usize,
-) -> anyhow::Result<Vec<MySqlRow>> {
+) -> anyhow::Result<Vec<sqlx::postgres::PgRow>> {
     let mut interval = crate::INTERVAL;
     let mut retry_attempt = 0usize;
 
@@ -106,7 +114,7 @@ pub async fn select_retry_or_panic(
         }
         retry_attempt += 1;
 
-        let mut args = sqlx::mysql::MySqlArguments::default();
+        let mut args = sqlx::postgres::PgArguments::default();
         for item in substitution_items {
             args.add(item);
         }
@@ -131,8 +139,49 @@ pub async fn select_retry_or_panic(
     }
 }
 
-fn create_query_with_placeholders(
-    query: &str,
+async fn delete_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    timestamp: &BigDecimal,
+    retry_count: usize,
+) -> anyhow::Result<()> {
+    let mut interval = crate::INTERVAL;
+    let mut retry_attempt = 0usize;
+    let query = T::delete_query();
+
+    loop {
+        if retry_attempt == retry_count {
+            return Err(anyhow::anyhow!(
+                "Failed to perform query to database after {} attempts. Stop trying.",
+                retry_count
+            ));
+        }
+        retry_attempt += 1;
+
+        let mut args = sqlx::postgres::PgArguments::default();
+        args.add(timestamp);
+
+        match sqlx::query_with(&query, args).execute(pool).await {
+            Ok(_) => break,
+            Err(async_error) => {
+                tracing::error!(
+                         target: crate::INDEXER,
+                         "Error occurred during {}:\n could not clean up {}. \n Retrying in {} milliseconds...",
+                         async_error,
+                         &T::name(),
+                         interval.as_millis(),
+                     );
+                tokio::time::sleep(interval).await;
+                if interval < crate::MAX_DELAY_TIME {
+                    interval *= 2;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// Generates `($1, $2), ($3, $4)`
+pub(crate) fn create_placeholders(
     mut items_count: usize,
     fields_count: usize,
 ) -> anyhow::Result<String> {
@@ -140,11 +189,11 @@ fn create_query_with_placeholders(
         return Err(anyhow::anyhow!("At least 1 item expected"));
     }
 
-    let placeholder = create_placeholder(fields_count)?;
-    // Generates `INSERT INTO table VALUES (?, ?, ?), (?, ?, ?)`
-    let mut res = query.to_owned() + " " + &placeholder;
+    let mut start_num: usize = 1;
+    let mut res = create_placeholder(&mut start_num, fields_count)?;
     items_count -= 1;
     while items_count > 0 {
+        let placeholder = create_placeholder(&mut start_num, fields_count)?;
         res += ", ";
         res += &placeholder;
         items_count -= 1;
@@ -153,19 +202,66 @@ fn create_query_with_placeholders(
     Ok(res)
 }
 
-// Generates `(?, ?, ?)`
-pub fn create_placeholder(mut fields_count: usize) -> anyhow::Result<String> {
+// Generates `($1, $2, $3)`
+pub(crate) fn create_placeholder(
+    start_num: &mut usize,
+    mut fields_count: usize,
+) -> anyhow::Result<String> {
     if fields_count < 1 {
         return Err(anyhow::anyhow!("At least 1 field expected"));
     }
-    let mut item = "(?".to_owned();
+    let mut item = format!("(${}", start_num);
+    *start_num += 1;
     fields_count -= 1;
     while fields_count > 0 {
-        item += ", ?";
+        item += &format!(", ${}", start_num);
+        *start_num += 1;
         fields_count -= 1;
     }
     item += ")";
     Ok(item)
+}
+
+pub(crate) async fn start_after_interruption(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+) -> anyhow::Result<u64> {
+    let query = "SELECT block_timestamp
+                        FROM blocks
+                        ORDER BY block_timestamp desc
+                        LIMIT 1";
+
+    let res = select_retry_or_panic(pool, query, &[], 10).await?;
+    let timestamp: BigDecimal = res
+        .first()
+        .map(|value| value.get(0))
+        .unwrap_or_else(BigDecimal::zero);
+
+    try_join!(
+        delete_retry_or_panic::<AccountChange>(pool, &timestamp, 10),
+        delete_retry_or_panic::<Block>(pool, &timestamp, 10),
+        delete_retry_or_panic::<Chunk>(pool, &timestamp, 10),
+        delete_retry_or_panic::<ExecutionOutcome>(pool, &timestamp, 10),
+        delete_retry_or_panic::<ExecutionOutcomeReceipt>(pool, &timestamp, 10),
+        delete_retry_or_panic::<ActionReceipt>(pool, &timestamp, 10),
+        delete_retry_or_panic::<DataReceipt>(pool, &timestamp, 10),
+        delete_retry_or_panic::<ActionReceiptAction>(pool, &timestamp, 10),
+        delete_retry_or_panic::<ActionReceiptsOutput>(pool, &timestamp, 10),
+        delete_retry_or_panic::<Transaction>(pool, &timestamp, 10)
+    )?;
+
+    let query = "SELECT block_height
+                        FROM blocks
+                        ORDER BY block_timestamp desc
+                        LIMIT 1";
+
+    let res = select_retry_or_panic(pool, query, &[], 10).await?;
+    let height: u64 = res
+        .first()
+        .map(|value| value.get(0))
+        .unwrap_or_else(BigDecimal::zero)
+        .to_u64()
+        .expect("height should be positive");
+    Ok(height + 1)
 }
 
 pub(crate) trait PrintEnum {

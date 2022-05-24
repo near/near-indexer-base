@@ -84,7 +84,7 @@ impl AccountChange {
 }
 
 impl crate::models::MySqlMethods for AccountChange {
-    fn add_to_args(&self, args: &mut sqlx::mysql::MySqlArguments) {
+    fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.account_id);
         args.add(&self.block_timestamp);
         args.add(&self.block_hash);
@@ -98,12 +98,17 @@ impl crate::models::MySqlMethods for AccountChange {
         args.add(&self.index_in_chunk);
     }
 
-    fn get_query(account_changes_count: usize) -> anyhow::Result<String> {
-        crate::models::create_query_with_placeholders(
-            "INSERT IGNORE INTO account_changes VALUES",
-            account_changes_count,
-            AccountChange::field_count(),
-        )
+    fn insert_query(account_changes_count: usize) -> anyhow::Result<String> {
+        Ok("INSERT INTO account_changes VALUES ".to_owned()
+            + &crate::models::create_placeholders(
+                account_changes_count,
+                AccountChange::field_count(),
+            )?
+            + " ON CONFLICT DO NOTHING")
+    }
+
+    fn delete_query() -> String {
+        "DELETE FROM account_changes WHERE block_timestamp >= $1".to_string()
     }
 
     fn name() -> String {

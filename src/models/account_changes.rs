@@ -103,8 +103,7 @@ impl crate::models::MySqlMethods for AccountChange {
             + &crate::models::create_placeholders(
                 account_changes_count,
                 AccountChange::field_count(),
-            )?
-            + " ON CONFLICT DO NOTHING")
+            )?)
     }
 
     fn delete_query() -> String {

@@ -60,8 +60,7 @@ impl crate::models::MySqlMethods for ExecutionOutcome {
             + &crate::models::create_placeholders(
                 execution_outcome_count,
                 ExecutionOutcome::field_count(),
-            )?
-            + " ON CONFLICT DO NOTHING")
+            )?)
     }
 
     fn delete_query() -> String {
@@ -99,8 +98,7 @@ impl crate::models::MySqlMethods for ExecutionOutcomeReceipt {
                 + &crate::models::create_placeholders(
                     execution_outcome_receipt_count,
                     ExecutionOutcomeReceipt::field_count(),
-                )?
-                + " ON CONFLICT DO NOTHING",
+                )?,
         )
     }
 

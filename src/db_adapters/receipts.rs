@@ -279,7 +279,7 @@ async fn find_tx_hashes_for_receipts(
 
         let mut args = sqlx::postgres::PgArguments::default();
         args.add(BigDecimal::from(block_height));
-        let query = "INSERT INTO _blocks_to_rerun VALUES ($1) ON CONFLICT DO NOTHING";
+        let query = "INSERT INTO _blocks_to_rerun VALUES ($1)";
         sqlx::query_with(query, args).execute(pool).await?;
     }
 

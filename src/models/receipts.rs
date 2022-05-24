@@ -68,8 +68,7 @@ impl crate::models::MySqlMethods for DataReceipt {
 
     fn insert_query(items_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO data_receipts VALUES ".to_owned()
-            + &crate::models::create_placeholders(items_count, DataReceipt::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(items_count, DataReceipt::field_count())?)
     }
 
     fn delete_query() -> String {
@@ -154,8 +153,7 @@ impl crate::models::MySqlMethods for ActionReceipt {
 
     fn insert_query(items_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO action_receipts VALUES ".to_owned()
-            + &crate::models::create_placeholders(items_count, ActionReceipt::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(items_count, ActionReceipt::field_count())?)
     }
 
     fn delete_query() -> String {
@@ -223,8 +221,7 @@ impl crate::models::MySqlMethods for ActionReceiptAction {
 
     fn insert_query(items_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO action_receipts__actions VALUES ".to_owned()
-            + &crate::models::create_placeholders(items_count, ActionReceiptAction::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(items_count, ActionReceiptAction::field_count())?)
     }
 
     fn delete_query() -> String {
@@ -284,8 +281,7 @@ impl crate::models::MySqlMethods for ActionReceiptsOutput {
             + &crate::models::create_placeholders(
                 items_count,
                 ActionReceiptsOutput::field_count(),
-            )?
-            + " ON CONFLICT DO NOTHING")
+            )?)
     }
 
     fn delete_query() -> String {

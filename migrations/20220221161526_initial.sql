@@ -23,12 +23,11 @@ CREATE TABLE account_changes
     caused_by_transaction_hash text,
     caused_by_receipt_id       text,
     update_reason              text           NOT NULL,
-    nonstaked_balance          numeric(45, 0) NOT NULL,
-    staked_balance             numeric(45, 0) NOT NULL,
+    nonstaked_balance          numeric(38, 0) NOT NULL,
+    staked_balance             numeric(38, 0) NOT NULL,
     storage_usage              numeric(20, 0) NOT NULL,
     chunk_index_in_block       integer        NOT NULL,
-    index_in_chunk             integer        NOT NULL,
-    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
+    index_in_chunk             integer        NOT NULL
 );
 
 -- action_kind options:
@@ -50,12 +49,11 @@ CREATE TABLE action_receipts__actions
     action_kind            text           NOT NULL,
     -- https://docs.aws.amazon.com/redshift/latest/dg/json-functions.html
     -- https://docs.aws.amazon.com/redshift/latest/dg/super-overview.html
-    args                   jsonb           NOT NULL,
+    args                   super           NOT NULL,
     predecessor_account_id text           NOT NULL,
     receiver_account_id    text           NOT NULL,
     chunk_index_in_block   integer        NOT NULL,
-    index_in_chunk         integer        NOT NULL,
-    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
+    index_in_chunk         integer        NOT NULL
 );
 
 CREATE TABLE action_receipts__outputs
@@ -66,8 +64,7 @@ CREATE TABLE action_receipts__outputs
     output_data_id       text           NOT NULL,
     receiver_account_id  text           NOT NULL,
     chunk_index_in_block integer        NOT NULL,
-    index_in_chunk       integer        NOT NULL,
-    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
+    index_in_chunk       integer        NOT NULL
 );
 
 CREATE TABLE action_receipts
@@ -85,8 +82,7 @@ CREATE TABLE action_receipts
     signer_public_key                text           NOT NULL,
 --     todo change logic with gas_price + gas_used
 -- https://github.com/near/near-analytics/issues/19
-    gas_price                        numeric(45, 0) NOT NULL,
-    PRIMARY KEY (receipt_id)
+    gas_price                        numeric(38, 0) NOT NULL
 );
 
 CREATE TABLE blocks
@@ -95,11 +91,10 @@ CREATE TABLE blocks
     block_hash        text           NOT NULL,
     prev_block_hash   text           NOT NULL,
     block_timestamp   numeric(20, 0) NOT NULL,
-    total_supply      numeric(45, 0) NOT NULL,
+    total_supply      numeric(38, 0) NOT NULL,
 --     todo next_block_gas_price? https://github.com/near/near-analytics/issues/19
-    gas_price         numeric(45, 0) NOT NULL,
-    author_account_id text           NOT NULL,
-    PRIMARY KEY (block_hash)
+    gas_price         numeric(38, 0) NOT NULL,
+    author_account_id text           NOT NULL
 );
 
 CREATE TABLE chunks
@@ -111,8 +106,7 @@ CREATE TABLE chunks
     signature         text           NOT NULL,
     gas_limit         numeric(20, 0) NOT NULL,
     gas_used          numeric(20, 0) NOT NULL,
-    author_account_id text           NOT NULL,
-    PRIMARY KEY (chunk_hash)
+    author_account_id text           NOT NULL
 );
 
 CREATE TABLE data_receipts
@@ -127,8 +121,7 @@ CREATE TABLE data_receipts
     receiver_account_id              text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
     data_id                          text           NOT NULL,
-    data                             bytea,
-    PRIMARY KEY (receipt_id)
+    data                             varbyte
 );
 
 CREATE TABLE execution_outcomes__receipts
@@ -138,8 +131,7 @@ CREATE TABLE execution_outcomes__receipts
     executed_receipt_id  text           NOT NULL,
     produced_receipt_id  text           NOT NULL,
     chunk_index_in_block integer        NOT NULL,
-    index_in_chunk       integer        NOT NULL,
-    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
+    index_in_chunk       integer        NOT NULL
 );
 
 -- status options:
@@ -158,10 +150,9 @@ CREATE TABLE execution_outcomes
     chunk_index_in_block integer        NOT NULL,
     index_in_chunk       integer        NOT NULL,
     gas_burnt            numeric(20, 0) NOT NULL,
-    tokens_burnt         numeric(45, 0) NOT NULL,
+    tokens_burnt         numeric(38, 0) NOT NULL,
     executor_account_id  text           NOT NULL,
-    status               text           NOT NULL,
-    PRIMARY KEY (block_timestamp, chunk_index_in_block, index_in_chunk)
+    status               text           NOT NULL
 );
 
 -- status options:
@@ -187,11 +178,9 @@ CREATE TABLE transactions
     status                          text           NOT NULL,
     converted_into_receipt_id       text           NOT NULL,
     receipt_conversion_gas_burnt    numeric(20, 0),
-    receipt_conversion_tokens_burnt numeric(45, 0),
-    PRIMARY KEY (transaction_hash)
+    receipt_conversion_tokens_burnt numeric(38, 0)
 );
 
 CREATE TABLE _blocks_to_rerun (
-    block_height numeric(20, 0) NOT NULL,
-    PRIMARY KEY (block_height)
+    block_height numeric(20, 0) NOT NULL
 );

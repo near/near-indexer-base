@@ -48,8 +48,7 @@ impl crate::models::MySqlMethods for Chunk {
 
     fn insert_query(chunks_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO chunks VALUES ".to_owned()
-            + &crate::models::create_placeholders(chunks_count, Chunk::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(chunks_count, Chunk::field_count())?)
     }
 
     fn delete_query() -> String {

@@ -40,28 +40,28 @@ async fn main() -> anyhow::Result<()> {
 
     let opts: Opts = Opts::parse();
 
-    // let options = sqlx::postgres::PgConnectOptions::new()
-    //     .host(&env::var("DB_HOST")?)
-    //     .port(env::var("DB_PORT")?.parse()?)
-    //     .username(&env::var("DB_USER")?)
-    //     .password(&env::var("DB_PASSWORD")?)
-    //     .database(&env::var("DB_NAME")?)
-    //     .extra_float_digits(2);
+    let options = sqlx::postgres::PgConnectOptions::new()
+        .host(&env::var("DB_HOST")?)
+        .port(env::var("DB_PORT")?.parse()?)
+        .username(&env::var("DB_USER")?)
+        .password(&env::var("DB_PASSWORD")?)
+        .database(&env::var("DB_NAME")?)
+        .extra_float_digits(2);
 
-    // let pool = sqlx::PgPool::connect_with(options).await?;
-    let pool = sqlx::PgPool::connect(&env::var("DATABASE_URL")?).await?;
+    let pool = sqlx::PgPool::connect_with(options).await?;
+    // let pool = sqlx::PgPool::connect(&env::var("DATABASE_URL")?).await?;
     // TODO Error: while executing migrations: error returned from database: 1128 (HY000): Function 'near_indexer.GET_LOCK' is not defined
     // sqlx::migrate!().run(&pool).await?;
 
-    // let start_block_height = match opts.start_block_height {
-    //     Some(x) => x,
-    //     None => models::start_after_interruption(&pool).await?,
-    // };
+    let start_block_height = match opts.start_block_height {
+        Some(x) => x,
+        None => models::start_after_interruption(&pool).await?,
+    };
     let config = near_lake_framework::LakeConfig {
         s3_config: None,
         s3_bucket_name: opts.s3_bucket_name.clone(),
         s3_region_name: opts.s3_region_name.clone(),
-        start_block_height: opts.start_block_height.unwrap(),
+        start_block_height,
     };
     init_tracing();
 

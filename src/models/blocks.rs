@@ -45,8 +45,7 @@ impl crate::models::MySqlMethods for Block {
 
     fn insert_query(blocks_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO blocks VALUES ".to_owned()
-            + &crate::models::create_placeholders(blocks_count, Block::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(blocks_count, Block::field_count())?)
     }
 
     fn delete_query() -> String {

@@ -90,8 +90,7 @@ impl crate::models::MySqlMethods for Transaction {
 
     fn insert_query(transactions_count: usize) -> anyhow::Result<String> {
         Ok("INSERT INTO transactions VALUES ".to_owned()
-            + &crate::models::create_placeholders(transactions_count, Transaction::field_count())?
-            + " ON CONFLICT DO NOTHING")
+            + &crate::models::create_placeholders(transactions_count, Transaction::field_count())?)
     }
 
     fn delete_query() -> String {

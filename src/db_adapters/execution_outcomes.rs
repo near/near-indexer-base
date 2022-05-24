@@ -17,7 +17,7 @@ pub(crate) async fn store_execution_outcomes(
             shard.shard_id,
             block_hash,
             block_timestamp,
-            std::sync::Arc::clone(&receipts_cache),
+            receipts_cache.clone(),
         )
     });
 

@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
             handle_streamer_message(
                 streamer_message,
                 &pool,
-                std::sync::Arc::clone(&receipts_cache),
+                receipts_cache.clone(),
                 !opts.non_strict_mode,
             )
         })
@@ -120,7 +120,7 @@ async fn handle_streamer_message(
         &streamer_message.shards,
         &streamer_message.block.header.hash,
         streamer_message.block.header.timestamp,
-        std::sync::Arc::clone(&receipts_cache),
+        receipts_cache.clone(),
     );
 
     let receipts_future = db_adapters::receipts::store_receipts(
@@ -130,7 +130,7 @@ async fn handle_streamer_message(
         &streamer_message.block.header.hash,
         streamer_message.block.header.timestamp,
         streamer_message.block.header.height,
-        std::sync::Arc::clone(&receipts_cache),
+        receipts_cache.clone(),
     );
 
     let execution_outcomes_future = db_adapters::execution_outcomes::store_execution_outcomes(
@@ -138,7 +138,7 @@ async fn handle_streamer_message(
         &streamer_message.shards,
         &streamer_message.block.header.hash,
         streamer_message.block.header.timestamp,
-        std::sync::Arc::clone(&receipts_cache),
+        receipts_cache.clone(),
     );
 
     let account_changes_future = db_adapters::account_changes::store_account_changes(

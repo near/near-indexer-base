@@ -57,7 +57,7 @@ async fn store_chunk_receipts(
             block_hash,
             block_height,
             &chunk_header.chunk_hash,
-            std::sync::Arc::clone(&receipts_cache),
+            receipts_cache.clone(),
         )
         .await?;
 

@@ -212,7 +212,7 @@ impl crate::models::MySqlMethods for ActionReceiptAction {
         args.add(&self.block_timestamp);
         args.add(&self.receipt_id);
         args.add(&self.action_kind);
-        args.add(&self.args);
+        args.add(&self.args.to_string());
         args.add(&self.predecessor_account_id);
         args.add(&self.receiver_account_id);
         args.add(&self.chunk_index_in_block);

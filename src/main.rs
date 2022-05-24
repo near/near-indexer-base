@@ -86,16 +86,16 @@ async fn main() -> anyhow::Result<()> {
         })
         .buffer_unordered(1usize);
 
-    let mut time_now = std::time::Instant::now();
+    // let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
             Ok(block_height) => {
-                let elapsed = time_now.elapsed();
-                println!(
-                    "Elapsed time spent on block {}: {:.3?}",
-                    block_height, elapsed
-                );
-                time_now = std::time::Instant::now();
+                // let elapsed = time_now.elapsed();
+                // println!(
+                //     "Elapsed time spent on block {}: {:.3?}",
+                //     block_height, elapsed
+                // );
+                // time_now = std::time::Instant::now();
             }
             Err(e) => {
                 return Err(anyhow::anyhow!(e));
@@ -112,11 +112,13 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    eprintln!(
-        "{} / shards {}",
-        streamer_message.block.header.height,
-        streamer_message.shards.len()
-    );
+    if streamer_message.block.header.height % 100 == 0 {
+        eprintln!(
+            "{} / shards {}",
+            streamer_message.block.header.height,
+            streamer_message.shards.len()
+        );
+    }
 
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 

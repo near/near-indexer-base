@@ -121,7 +121,8 @@ CREATE TABLE data_receipts
     receiver_account_id              text           NOT NULL,
     originated_from_transaction_hash text           NOT NULL,
     data_id                          text           NOT NULL,
-    data                             varbyte
+    -- todo it's the only working way to copy data from aurora i've found. need to check that we do not corrupt binary data in varchar type
+    data                             varchar(64000)
 );
 
 CREATE TABLE execution_outcomes__receipts

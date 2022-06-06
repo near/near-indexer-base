@@ -1426,6 +1426,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "indexer-base"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "avro-rs",
+ "base64 0.11.0",
+ "bigdecimal",
+ "cached",
+ "clap",
+ "dotenv",
+ "futures",
+ "hex",
+ "itertools 0.9.0",
+ "near-crypto 0.0.0",
+ "near-indexer-primitives",
+ "near-lake-framework",
+ "num-traits",
+ "quote",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "syn",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1692,36 +1722,6 @@ dependencies = [
  "near-primitives",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "near-lake-flows-into-sql"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "avro-rs",
- "base64 0.11.0",
- "bigdecimal",
- "cached",
- "clap",
- "dotenv",
- "futures",
- "hex",
- "itertools 0.9.0",
- "near-crypto 0.0.0",
- "near-indexer-primitives",
- "near-lake-framework",
- "num-traits",
- "quote",
- "serde",
- "serde_json",
- "sqlx",
- "syn",
- "tempfile",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

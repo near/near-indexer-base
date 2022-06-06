@@ -112,13 +112,13 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    if streamer_message.block.header.height % 100 == 0 {
+    // if streamer_message.block.header.height % 100 == 0 {
         eprintln!(
             "{} / shards {}",
             streamer_message.block.header.height,
             streamer_message.shards.len()
         );
-    }
+    // }
 
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 

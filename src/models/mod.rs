@@ -10,7 +10,7 @@ use sqlx::{Arguments, Row};
 
 pub use account_changes::AccountChange;
 pub use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
-pub use near_lake_flows_into_sql::FieldCount;
+pub use indexer_base::FieldCount;
 pub use receipts::{ActionReceipt, ActionReceiptAction, ActionReceiptsOutput, DataReceipt};
 pub use transactions::Transaction;
 
@@ -78,8 +78,7 @@ async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
         match sqlx::query_with(&query, args).execute(pool).await {
             Ok(_) => break,
             Err(async_error) => {
-                tracing::error!(
-                         target: crate::INDEXER,
+                eprintln!(
                          "Error occurred during {}:\n{} were not stored. \n{:#?} \n Retrying in {} milliseconds...",
                          async_error,
                          &T::name(),

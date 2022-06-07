@@ -34,7 +34,7 @@ impl Chunk {
     }
 }
 
-impl crate::models::MySqlMethods for Chunk {
+impl crate::models::SqlMethods for Chunk {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_timestamp);
         args.add(&self.block_hash);

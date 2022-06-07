@@ -1,4 +1,3 @@
-// TODO cleanup imports in all the files in the end
 use cached::SizedCache;
 use clap::Parser;
 use dotenv::dotenv;
@@ -39,24 +38,7 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let opts: Opts = Opts::parse();
-
-    // let options = sqlx::postgres::PgConnectOptions::new()
-    //     .host(&env::var("DB_HOST")?)
-    //     .port(env::var("DB_PORT")?.parse()?)
-    //     .username(&env::var("DB_USER")?)
-    //     .password(&env::var("DB_PASSWORD")?)
-    //     .database(&env::var("DB_NAME")?)
-    //     .extra_float_digits(2);
-
-    // let pool = sqlx::PgPool::connect_with(options).await?;
     let pool = sqlx::PgPool::connect(&env::var("DATABASE_URL")?).await?;
-    // TODO Error: while executing migrations: error returned from database: 1128 (HY000): Function 'near_indexer.GET_LOCK' is not defined
-    // sqlx::migrate!().run(&pool).await?;
-
-    // let start_block_height = match opts.start_block_height {
-    //     Some(x) => x,
-    //     None => models::start_after_interruption(&pool).await?,
-    // };
     let config = near_lake_framework::LakeConfig {
         s3_config: None,
         s3_bucket_name: opts.s3_bucket_name.clone(),
@@ -89,11 +71,11 @@ async fn main() -> anyhow::Result<()> {
     // let mut time_now = std::time::Instant::now();
     while let Some(handle_message) = handlers.next().await {
         match handle_message {
-            Ok(block_height) => {
+            Ok(_block_height) => {
                 // let elapsed = time_now.elapsed();
                 // println!(
                 //     "Elapsed time spent on block {}: {:.3?}",
-                //     block_height, elapsed
+                //     _block_height, elapsed
                 // );
                 // time_now = std::time::Instant::now();
             }
@@ -107,17 +89,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle_streamer_message(
-    streamer_message: near_lake_framework::near_indexer_primitives::StreamerMessage,
+    streamer_message: near_indexer_primitives::StreamerMessage,
     pool: &sqlx::Pool<sqlx::Postgres>,
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
     // if streamer_message.block.header.height % 100 == 0 {
-        eprintln!(
-            "{} / shards {}",
-            streamer_message.block.header.height,
-            streamer_message.shards.len()
-        );
+    eprintln!(
+        "{} / shards {}",
+        streamer_message.block.header.height,
+        streamer_message.shards.len()
+    );
     // }
 
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
@@ -141,9 +123,7 @@ async fn handle_streamer_message(
         pool,
         strict_mode,
         &streamer_message.shards,
-        &streamer_message.block.header.hash,
-        streamer_message.block.header.timestamp,
-        streamer_message.block.header.height,
+        &streamer_message.block.header,
         receipts_cache.clone(),
     );
 
@@ -162,9 +142,21 @@ async fn handle_streamer_message(
         streamer_message.block.header.timestamp,
     );
 
-    try_join!(blocks_future, chunks_future, transactions_future)?;
-    try_join!(receipts_future)?; // this guy can contain local receipts, so we have to do that after transactions_future finished the work
-    try_join!(execution_outcomes_future, account_changes_future)?; // this guy thinks that receipts_future finished, and clears the cache
+    let dependant_futures = async {
+        transactions_future.await?;
+        // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+        receipts_future.await?;
+        // this guy thinks that receipts_future finished, and clears the cache
+        execution_outcomes_future.await?;
+        Ok(())
+    };
+
+    try_join!(
+        blocks_future,
+        chunks_future,
+        account_changes_future,
+        dependant_futures
+    )?;
     Ok(streamer_message.block.header.height)
 }
 

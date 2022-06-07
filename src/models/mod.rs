@@ -1,29 +1,24 @@
-use bigdecimal::BigDecimal;
 use futures::future::try_join_all;
+use sqlx::Arguments;
+
 use near_indexer_primitives::views::{
     AccessKeyPermissionView, ExecutionStatusView, StateChangeCauseView,
 };
 
-use futures::try_join;
-use num_traits::{ToPrimitive, Zero};
-use sqlx::{Arguments, Row};
-
-pub use account_changes::AccountChange;
-pub use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
-pub use indexer_base::FieldCount;
-pub use receipts::{ActionReceipt, ActionReceiptAction, ActionReceiptsOutput, DataReceipt};
-pub use transactions::Transaction;
-
-use crate::models::blocks::Block;
-use crate::models::chunks::Chunk;
-pub(crate) use serializers::extract_action_type_and_value_from_action_view;
+pub(crate) use account_changes::AccountChange;
+pub(crate) use blocks::Block;
+pub(crate) use chunks::Chunk;
+pub(crate) use execution_outcomes::{ExecutionOutcome, ExecutionOutcomeReceipt};
+pub(crate) use indexer_base::FieldCount;
+pub(crate) use receipts::{ActionReceipt, ActionReceiptAction, ActionReceiptsOutput, DataReceipt};
+pub(crate) use transactions::Transaction;
 
 pub(crate) mod account_changes;
 pub(crate) mod blocks;
 pub(crate) mod chunks;
 pub(crate) mod execution_outcomes;
 pub(crate) mod receipts;
-mod serializers;
+pub(crate) mod serializers;
 pub(crate) mod transactions;
 
 pub trait FieldCount {
@@ -31,7 +26,7 @@ pub trait FieldCount {
     fn field_count() -> usize;
 }
 
-pub trait MySqlMethods {
+pub trait SqlMethods {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments);
 
     fn insert_query(count: usize) -> anyhow::Result<String>;
@@ -41,18 +36,17 @@ pub trait MySqlMethods {
     fn name() -> String;
 }
 
-pub async fn chunked_insert<T: MySqlMethods + std::fmt::Debug>(
+pub async fn chunked_insert<T: SqlMethods + std::fmt::Debug>(
     pool: &sqlx::Pool<sqlx::Postgres>,
     items: &[T],
-    retry_count: usize,
 ) -> anyhow::Result<()> {
     let futures = items
         .chunks(crate::db_adapters::CHUNK_SIZE_FOR_BATCH_INSERT)
-        .map(|items_part| insert_retry_or_panic(pool, items_part, retry_count));
+        .map(|items_part| insert_retry_or_panic(pool, items_part, crate::db_adapters::RETRY_COUNT));
     try_join_all(futures).await.map(|_| ())
 }
 
-async fn insert_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
+async fn insert_retry_or_panic<T: SqlMethods + std::fmt::Debug>(
     pool: &sqlx::Pool<sqlx::Postgres>,
     items: &[T],
     retry_count: usize,
@@ -99,16 +93,15 @@ pub async fn select_retry_or_panic(
     pool: &sqlx::Pool<sqlx::Postgres>,
     query: &str,
     substitution_items: &[String],
-    retry_count: usize,
 ) -> anyhow::Result<Vec<sqlx::postgres::PgRow>> {
     let mut interval = crate::INTERVAL;
     let mut retry_attempt = 0usize;
 
     loop {
-        if retry_attempt == retry_count {
+        if retry_attempt == crate::db_adapters::RETRY_COUNT {
             return Err(anyhow::anyhow!(
                 "Failed to perform query to database after {} attempts. Stop trying.",
-                retry_count
+                crate::db_adapters::RETRY_COUNT
             ));
         }
         retry_attempt += 1;
@@ -136,47 +129,6 @@ pub async fn select_retry_or_panic(
             }
         }
     }
-}
-
-async fn delete_retry_or_panic<T: MySqlMethods + std::fmt::Debug>(
-    pool: &sqlx::Pool<sqlx::Postgres>,
-    timestamp: &BigDecimal,
-    retry_count: usize,
-) -> anyhow::Result<()> {
-    let mut interval = crate::INTERVAL;
-    let mut retry_attempt = 0usize;
-    let query = T::delete_query();
-
-    loop {
-        if retry_attempt == retry_count {
-            return Err(anyhow::anyhow!(
-                "Failed to perform query to database after {} attempts. Stop trying.",
-                retry_count
-            ));
-        }
-        retry_attempt += 1;
-
-        let mut args = sqlx::postgres::PgArguments::default();
-        args.add(timestamp);
-
-        match sqlx::query_with(&query, args).execute(pool).await {
-            Ok(_) => break,
-            Err(async_error) => {
-                tracing::error!(
-                         target: crate::INDEXER,
-                         "Error occurred during {}:\n could not clean up {}. \n Retrying in {} milliseconds...",
-                         async_error,
-                         &T::name(),
-                         interval.as_millis(),
-                     );
-                tokio::time::sleep(interval).await;
-                if interval < crate::MAX_DELAY_TIME {
-                    interval *= 2;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 // Generates `($1, $2), ($3, $4)`
@@ -219,48 +171,6 @@ pub(crate) fn create_placeholder(
     }
     item += ")";
     Ok(item)
-}
-
-pub(crate) async fn start_after_interruption(
-    pool: &sqlx::Pool<sqlx::Postgres>,
-) -> anyhow::Result<u64> {
-    let query = "SELECT block_timestamp
-                        FROM blocks
-                        ORDER BY block_timestamp desc
-                        LIMIT 1";
-
-    let res = select_retry_or_panic(pool, query, &[], 10).await?;
-    let timestamp: BigDecimal = res
-        .first()
-        .map(|value| value.get(0))
-        .unwrap_or_else(BigDecimal::zero);
-
-    try_join!(
-        delete_retry_or_panic::<AccountChange>(pool, &timestamp, 10),
-        delete_retry_or_panic::<Block>(pool, &timestamp, 10),
-        delete_retry_or_panic::<Chunk>(pool, &timestamp, 10),
-        delete_retry_or_panic::<ExecutionOutcome>(pool, &timestamp, 10),
-        delete_retry_or_panic::<ExecutionOutcomeReceipt>(pool, &timestamp, 10),
-        delete_retry_or_panic::<ActionReceipt>(pool, &timestamp, 10),
-        delete_retry_or_panic::<DataReceipt>(pool, &timestamp, 10),
-        delete_retry_or_panic::<ActionReceiptAction>(pool, &timestamp, 10),
-        delete_retry_or_panic::<ActionReceiptsOutput>(pool, &timestamp, 10),
-        delete_retry_or_panic::<Transaction>(pool, &timestamp, 10)
-    )?;
-
-    let query = "SELECT block_height
-                        FROM blocks
-                        ORDER BY block_timestamp desc
-                        LIMIT 1";
-
-    let res = select_retry_or_panic(pool, query, &[], 10).await?;
-    let height: u64 = res
-        .first()
-        .map(|value| value.get(0))
-        .unwrap_or_else(BigDecimal::zero)
-        .to_u64()
-        .expect("height should be positive");
-    Ok(height + 1)
 }
 
 pub(crate) trait PrintEnum {

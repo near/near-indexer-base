@@ -70,10 +70,10 @@ async fn store_chunk_transactions(
                 i as i32,
             )
         })
-        .collect::<Vec<models::transactions::Transaction>>();
+        .collect::<Vec<models::Transaction>>();
     drop(receipts_cache_lock);
 
-    crate::models::chunked_insert(pool, &transaction_models, 10).await?;
+    models::chunked_insert(pool, &transaction_models).await?;
 
     Ok(())
 }

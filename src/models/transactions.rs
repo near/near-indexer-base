@@ -69,7 +69,7 @@ impl Transaction {
     }
 }
 
-impl crate::models::MySqlMethods for Transaction {
+impl crate::models::SqlMethods for Transaction {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.transaction_hash);
         args.add(&self.block_hash);

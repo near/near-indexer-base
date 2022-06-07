@@ -33,7 +33,7 @@ pub async fn store_execution_outcomes_for_chunk(
     block_timestamp: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
-    crate::models::chunked_insert(
+    models::chunked_insert(
         pool,
         &execution_outcomes
             .iter()
@@ -46,8 +46,7 @@ pub async fn store_execution_outcomes_for_chunk(
                     shard_id,
                 )
             })
-            .collect::<Vec<models::execution_outcomes::ExecutionOutcome>>(),
-        10,
+            .collect::<Vec<models::ExecutionOutcome>>(),
     )
     .await?;
 
@@ -94,7 +93,7 @@ pub async fn store_execution_outcomes_for_chunk(
             execution_outcomes_receipt.index_in_chunk = i as i32;
         });
 
-    crate::models::chunked_insert(pool, &outcome_receipt_models, 10).await?;
+    models::chunked_insert(pool, &outcome_receipt_models).await?;
 
     Ok(())
 }

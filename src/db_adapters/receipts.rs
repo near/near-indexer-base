@@ -1,24 +1,22 @@
-use crate::models::select_retry_or_panic;
-use crate::{models, ParentTransactionHashString, ReceiptOrDataId};
+use std::collections::HashMap;
+use std::str::FromStr;
+
 use bigdecimal::BigDecimal;
 use cached::Cached;
 use futures::future::try_join_all;
 use futures::try_join;
 use itertools::{Either, Itertools};
-use near_indexer_primitives::views::ReceiptEnumView;
 use sqlx::Arguments;
 use sqlx::Row;
-use std::collections::HashMap;
-use std::str::FromStr;
+
+use crate::models;
 
 /// Saves receipts to database
 pub(crate) async fn store_receipts(
     pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     shards: &[near_indexer_primitives::IndexerShard],
-    block_hash: &near_indexer_primitives::CryptoHash,
-    block_timestamp: u64,
-    block_height: u64,
+    block_header: &near_indexer_primitives::views::BlockHeaderView,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
     let futures = shards
@@ -30,10 +28,8 @@ pub(crate) async fn store_receipts(
                 pool,
                 strict_mode,
                 &chunk.receipts,
-                block_hash,
+                block_header,
                 &chunk.header,
-                block_timestamp,
-                block_height,
                 std::sync::Arc::clone(&receipts_cache),
             )
         });
@@ -45,23 +41,21 @@ async fn store_chunk_receipts(
     pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     receipts: &[near_indexer_primitives::views::ReceiptView],
-    block_hash: &near_indexer_primitives::CryptoHash,
+    block_header: &near_indexer_primitives::views::BlockHeaderView,
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
-    block_timestamp: u64,
-    block_height: u64,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<()> {
-    let tx_hashes_for_receipts: HashMap<ReceiptOrDataId, ParentTransactionHashString> =
-        find_tx_hashes_for_receipts(
-            pool,
-            strict_mode,
-            receipts.to_vec(),
-            block_hash,
-            block_height,
-            &chunk_header.chunk_hash,
-            receipts_cache.clone(),
-        )
-        .await?;
+    let tx_hashes_for_receipts: HashMap<
+        crate::ReceiptOrDataId,
+        crate::ParentTransactionHashString,
+    > = find_tx_hashes_for_receipts(
+        pool,
+        strict_mode,
+        receipts.to_vec(),
+        block_header.height,
+        receipts_cache.clone(),
+    )
+    .await?;
 
     // At the moment we can observe output data in the Receipt it's impossible to know
     // the Receipt Id of that Data Receipt. That's why we insert the pair DataId<>ParentTransactionHash
@@ -99,26 +93,27 @@ async fn store_chunk_receipts(
         .iter()
         .enumerate()
         .filter_map(|(index, receipt)| match receipt.receipt {
-            ReceiptEnumView::Action { .. } => tx_hashes_for_receipts
-                .get(&crate::ReceiptOrDataId::ReceiptId(receipt.receipt_id))
-                .map(|tx| (index, tx, receipt)),
-            ReceiptEnumView::Data { data_id, .. } => tx_hashes_for_receipts
-                .get(&crate::ReceiptOrDataId::DataId(data_id))
-                .map(|tx| (index, tx, receipt)),
+            near_indexer_primitives::views::ReceiptEnumView::Action { .. } => {
+                tx_hashes_for_receipts
+                    .get(&crate::ReceiptOrDataId::ReceiptId(receipt.receipt_id))
+                    .map(|tx| (index, tx, receipt))
+            }
+            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
+                tx_hashes_for_receipts
+                    .get(&crate::ReceiptOrDataId::DataId(data_id))
+                    .map(|tx| (index, tx, receipt))
+            }
         })
         .collect();
     if strict_mode && receipts.len() != enumerated_receipts_with_parent_tx.len() {
         // todo maybe it's better to collect blocks for rerun here
         return Err(anyhow::anyhow!(
             "Some tx hashes were not found at block {}",
-            block_height
+            block_header.height
         ));
     }
 
-    let (action_receipts, data_receipts): (
-        Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
-        Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
-    ) = enumerated_receipts_with_parent_tx.iter().partition_map(
+    let (action_receipts, data_receipts) = enumerated_receipts_with_parent_tx.iter().partition_map(
         |(index, tx, receipt)| match receipt.receipt {
             near_indexer_primitives::views::ReceiptEnumView::Action { .. } => {
                 Either::Left((*index, *tx, *receipt))
@@ -129,21 +124,11 @@ async fn store_chunk_receipts(
         },
     );
 
-    let process_receipt_actions_future = store_receipt_actions(
-        pool,
-        action_receipts,
-        block_hash,
-        chunk_header,
-        block_timestamp,
-    );
+    let process_receipt_actions_future =
+        store_receipt_actions(pool, action_receipts, block_header, chunk_header);
 
-    let process_receipt_data_future = store_data_receipts(
-        pool,
-        data_receipts,
-        block_hash,
-        chunk_header,
-        block_timestamp,
-    );
+    let process_receipt_data_future =
+        store_data_receipts(pool, data_receipts, block_header, chunk_header);
 
     try_join!(process_receipt_actions_future, process_receipt_data_future)?;
     Ok(())
@@ -154,10 +139,7 @@ async fn find_tx_hashes_for_receipts(
     pool: &sqlx::Pool<sqlx::Postgres>,
     strict_mode: bool,
     mut receipts: Vec<near_indexer_primitives::views::ReceiptView>,
-    // TODO we need to add sort of retry logic, these vars could be helpful
-    block_hash: &near_indexer_primitives::CryptoHash,
     block_height: u64,
-    chunk_hash: &near_indexer_primitives::CryptoHash,
     receipts_cache: crate::ReceiptsCache,
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let mut tx_hashes_for_receipts: HashMap<
@@ -230,8 +212,8 @@ async fn find_tx_hashes_for_receipts(
         tx_hashes_for_receipts.extend(tx_hashes_for_data_receipts.clone());
 
         receipts.retain(|r| match r.receipt {
-            ReceiptEnumView::Action { .. } => true,
-            ReceiptEnumView::Data { data_id, .. } => {
+            near_indexer_primitives::views::ReceiptEnumView::Action { .. } => true,
+            near_indexer_primitives::views::ReceiptEnumView::Data { data_id, .. } => {
                 !tx_hashes_for_data_receipts.contains_key(&crate::ReceiptOrDataId::DataId(data_id))
             }
         });
@@ -292,9 +274,9 @@ async fn find_transaction_hashes_for_data_receipts(
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let query = "SELECT action_receipts__outputs.output_data_id, action_receipts.originated_from_transaction_hash
                         FROM action_receipts__outputs JOIN action_receipts ON action_receipts__outputs.receipt_id = action_receipts.receipt_id
-                        WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &crate::models::create_placeholder(&mut 1,data_ids.len())?;
+                        WHERE action_receipts__outputs.output_data_id IN ".to_owned() + &models::create_placeholder(&mut 1,data_ids.len())?;
 
-    let res = select_retry_or_panic(pool, &query, data_ids, 10).await?;
+    let res = models::select_retry_or_panic(pool, &query, data_ids).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
@@ -318,9 +300,9 @@ async fn find_transaction_hashes_for_receipts_via_outcomes(
 ) -> anyhow::Result<HashMap<crate::ReceiptOrDataId, crate::ParentTransactionHashString>> {
     let query = "SELECT execution_outcomes__receipts.produced_receipt_id, action_receipts.originated_from_transaction_hash
                         FROM execution_outcomes__receipts JOIN action_receipts ON execution_outcomes__receipts.executed_receipt_id = action_receipts.receipt_id
-                        WHERE execution_outcomes__receipts.produced_receipt_id IN ".to_owned() + &crate::models::create_placeholder(&mut 1,action_receipt_ids.len())?;
+                        WHERE execution_outcomes__receipts.produced_receipt_id IN ".to_owned() + &models::create_placeholder(&mut 1,action_receipt_ids.len())?;
 
-    let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
+    let res = models::select_retry_or_panic(pool, &query, action_receipt_ids).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
@@ -346,9 +328,9 @@ async fn find_transaction_hashes_for_receipt_via_transactions(
                         FROM transactions
                         WHERE converted_into_receipt_id IN "
         .to_owned()
-        + &crate::models::create_placeholder(&mut 1, action_receipt_ids.len())?;
+        + &models::create_placeholder(&mut 1, action_receipt_ids.len())?;
 
-    let res = select_retry_or_panic(pool, &query, action_receipt_ids, 10).await?;
+    let res = models::select_retry_or_panic(pool, &query, action_receipt_ids).await?;
     Ok(res
         .iter()
         .map(|q| (q.get(0), q.get(1)))
@@ -369,20 +351,19 @@ async fn find_transaction_hashes_for_receipt_via_transactions(
 async fn store_receipt_actions(
     pool: &sqlx::Pool<sqlx::Postgres>,
     receipts: Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
-    block_hash: &near_indexer_primitives::CryptoHash,
+    block_header: &near_indexer_primitives::views::BlockHeaderView,
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
-    block_timestamp: u64,
 ) -> anyhow::Result<()> {
     let receipt_actions: Vec<models::ActionReceipt> = receipts
         .iter()
         .filter_map(|(index, tx, receipt)| {
             models::ActionReceipt::try_from_action_receipt_view(
                 *receipt,
-                block_hash,
+                &block_header.hash,
                 *tx,
                 chunk_header,
                 *index as i32,
-                block_timestamp,
+                block_header.timestamp,
             )
             .ok()
         })
@@ -400,8 +381,7 @@ async fn store_receipt_actions(
                         action,
                         receipt.predecessor_id.to_string(),
                         receipt.receiver_id.to_string(),
-                        block_hash,
-                        block_timestamp,
+                        block_header,
                         chunk_header.shard_id as i32,
                         // we fill it later because we can't enumerate before filtering finishes
                         0,
@@ -431,8 +411,8 @@ async fn store_receipt_actions(
                     models::ActionReceiptsOutput::from_data_receiver(
                         receipt.receipt_id.to_string(),
                         receiver,
-                        block_hash,
-                        block_timestamp,
+                        &block_header.hash,
+                        block_header.timestamp,
                         chunk_header.shard_id as i32,
                         // we fill it later because we can't enumerate before filtering finishes
                         0,
@@ -451,9 +431,9 @@ async fn store_receipt_actions(
         .collect();
 
     try_join!(
-        crate::models::chunked_insert(pool, &receipt_actions, 10,),
-        crate::models::chunked_insert(pool, &receipt_action_actions, 10,),
-        crate::models::chunked_insert(pool, &receipt_action_output_data, 10,),
+        models::chunked_insert(pool, &receipt_actions),
+        models::chunked_insert(pool, &receipt_action_actions),
+        models::chunked_insert(pool, &receipt_action_output_data),
     )?;
 
     Ok(())
@@ -462,27 +442,25 @@ async fn store_receipt_actions(
 async fn store_data_receipts(
     pool: &sqlx::Pool<sqlx::Postgres>,
     receipts: Vec<(usize, &String, &near_indexer_primitives::views::ReceiptView)>,
-    block_hash: &near_indexer_primitives::CryptoHash,
+    block_header: &near_indexer_primitives::views::BlockHeaderView,
     chunk_header: &near_indexer_primitives::views::ChunkHeaderView,
-    block_timestamp: u64,
 ) -> anyhow::Result<()> {
-    crate::models::chunked_insert(
+    models::chunked_insert(
         pool,
         &receipts
             .iter()
             .filter_map(|(index, tx, receipt)| {
                 models::DataReceipt::try_from_data_receipt_view(
                     receipt,
-                    block_hash,
+                    &block_header.hash,
                     tx,
                     chunk_header,
                     *index as i32,
-                    block_timestamp,
+                    block_header.timestamp,
                 )
                 .ok()
             })
             .collect::<Vec<models::DataReceipt>>(),
-        10,
     )
     .await
 }

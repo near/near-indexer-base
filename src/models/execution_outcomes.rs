@@ -42,7 +42,7 @@ impl ExecutionOutcome {
     }
 }
 
-impl crate::models::MySqlMethods for ExecutionOutcome {
+impl crate::models::SqlMethods for ExecutionOutcome {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
@@ -83,7 +83,7 @@ pub struct ExecutionOutcomeReceipt {
     pub index_in_chunk: i32,
 }
 
-impl crate::models::MySqlMethods for ExecutionOutcomeReceipt {
+impl crate::models::SqlMethods for ExecutionOutcomeReceipt {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);

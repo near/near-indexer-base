@@ -32,7 +32,7 @@ limit 100;
 -- Random queries from Explorer, taken from
 -- https://github.com/near/near-explorer/blob/master/backend/src/db-utils.ts
 
--- !!! ERROR 1858 ER_TOO_MANY_SORTED_RUNS: Leaf Error (node-49a0b120-c01e-4247-acc8-88be43f66613-leaf-ag2-0.svc-49a0b120-c01e-4247-acc8-88be43f66613:3306): There are too many distinct sorted row segment groups (223) for sorted iteration on "table account_changes". Run "OPTIMIZE TABLE account_changes" and then try again.
+-- !!! ERROR 1858 ER_TOO_MANY_SORTED_RUNS: Leaf Error (node-49a0b120-c01e-4247-acc8-88be43f66613-leaf-ag2-0.svc-49a0b120-c01e-4247-acc8-88be43f66613:3306): There are too many distinct sorted row segment groups (223) for sorted iteration on ''table account_changes''. Run ''OPTIMIZE TABLE account_changes'' and then try again.
 -- after I run optimize, it took 5 sec. But it's anyway not OK that optimize was required. We can say it took 40 minutes and 5 seconds.
 select blocks.block_height, account_changes.account_id, account_changes.block_timestamp, account_changes.caused_by_transaction_hash,
        account_changes.caused_by_receipt_id, account_changes.update_reason
@@ -44,26 +44,27 @@ limit 100;
 OPTIMIZE TABLE account_changes;
 
 -- 35s. Postgres: 13s
+-- aurora: 2s
 SELECT
     receiver_account_id,
     COUNT(*) AS transactions_count
 FROM transactions
-WHERE receiver_account_id IN ("cheese.zest.near",
-                              "miguel.zest.near",
-                              "zest.near",
-                              "paras.near",
-                              "diagnostics.tessab.near",
-                              "contract.paras.near",
-                              "plutus.paras.near",
-                              "berryclub.ek.near",
-                              "farm.berryclub.ek.near",
-                              "berryclub.near",
-                              "cards.berryclub.ek.near",
-                              "giveaway.paras.near",
-                              "bananaswap.near",
-                              "jerry.near.zest",
-                              "tessab.near",
-                              "amm.counselor.near")
+WHERE receiver_account_id IN ('cheese.zest.near',
+                              'miguel.zest.near',
+                              'zest.near',
+                              'paras.near',
+                              'diagnostics.tessab.near',
+                              'contract.paras.near',
+                              'plutus.paras.near',
+                              'berryclub.ek.near',
+                              'farm.berryclub.ek.near',
+                              'berryclub.near',
+                              'cards.berryclub.ek.near',
+                              'giveaway.paras.near',
+                              'bananaswap.near',
+                              'jerry.near.zest',
+                              'tessab.near',
+                              'amm.counselor.near')
 GROUP BY receiver_account_id
 ORDER BY transactions_count DESC;
 
@@ -77,16 +78,19 @@ WHERE
 use indexer_16_partitions;
 
 -- 700ms. Postgres: 4s
+-- aurora: 200ms
 SELECT COUNT(DISTINCT transactions.transaction_hash) AS in_transactions_count
 FROM transactions
          LEFT JOIN action_receipts ON action_receipts.originated_from_transaction_hash = transactions.transaction_hash
     AND transactions.block_timestamp >= 1650067200000000000 AND transactions.block_timestamp < 1650153600000000000
 WHERE action_receipts.block_timestamp >= 1650067200000000000 AND action_receipts.block_timestamp < 1650153600000000000
-  AND transactions.signer_account_id != "aurora"
-  AND action_receipts.receiver_account_id = "aurora";
+  AND transactions.signer_account_id != 'aurora'
+  AND action_receipts.receiver_account_id = 'aurora';
 
 -- !!! killed it after 9 minutes of waiting.  Postgres: 500 ms
-SELECT from_unixtime(round(account_changes.block_timestamp / (1000 * 1000 * 1000))) AS timestamp,
+-- aurora can't give the answer :( killed after 4 minutes
+
+SELECT round(account_changes.block_timestamp / (1000 * 1000 * 1000)) AS timestamp,
        account_changes.update_reason,
        account_changes.nonstaked_balance AS nonstaked_balance,
        account_changes.staked_balance AS staked_balance,
@@ -102,7 +106,21 @@ FROM account_changes
          LEFT JOIN transactions ON transactions.transaction_hash = account_changes.caused_by_transaction_hash
          LEFT JOIN action_receipts ON action_receipts.receipt_id = account_changes.caused_by_receipt_id
          LEFT JOIN action_receipts__actions ON action_receipts__actions.receipt_id = action_receipts.receipt_id
-WHERE account_changes.account_id = "aurora"
+WHERE account_changes.account_id = 'aurora' and account_changes.block_timestamp < 1647578052869592081
+ORDER BY account_changes.block_timestamp DESC
+LIMIT 100;
+
+
+SELECT round(account_changes.block_timestamp / (1000 * 1000 * 1000)) AS timestamp,
+       account_changes.update_reason,
+       account_changes.nonstaked_balance,
+       account_changes.staked_balance,
+       account_changes.storage_usage,
+       transactions.signer_account_id AS transaction_signer_id,
+       transactions.receiver_account_id AS transaction_receiver_id
+FROM account_changes
+         LEFT JOIN transactions ON transactions.transaction_hash = account_changes.caused_by_transaction_hash
+WHERE account_changes.account_id = 'aurora' and account_changes.block_timestamp < 1647578052869592081
 ORDER BY account_changes.block_timestamp DESC
 LIMIT 100;
 

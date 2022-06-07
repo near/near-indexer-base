@@ -3,7 +3,7 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use sqlx::Arguments;
 
-use crate::models::FieldCount;
+use crate::models::{self, FieldCount};
 
 #[derive(Debug, sqlx::FromRow, FieldCount)]
 pub struct DataReceipt {
@@ -51,7 +51,7 @@ impl DataReceipt {
     }
 }
 
-impl crate::models::MySqlMethods for DataReceipt {
+impl crate::models::SqlMethods for DataReceipt {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
@@ -136,7 +136,7 @@ impl ActionReceipt {
     }
 }
 
-impl crate::models::MySqlMethods for ActionReceipt {
+impl models::SqlMethods for ActionReceipt {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.receipt_id);
         args.add(&self.block_hash);
@@ -186,17 +186,16 @@ impl ActionReceiptAction {
         action_view: &near_indexer_primitives::views::ActionView,
         predecessor_account_id: String,
         receiver_account_id: String,
-        block_hash: &near_indexer_primitives::CryptoHash,
-        block_timestamp: u64,
+        block_header: &near_indexer_primitives::views::BlockHeaderView,
         chunk_index_in_block: i32,
         index_in_chunk: i32,
     ) -> Self {
         let (action_kind, args) =
-            crate::models::extract_action_type_and_value_from_action_view(action_view);
+            models::serializers::extract_action_type_and_value_from_action_view(action_view);
 
         Self {
-            block_hash: block_hash.to_string(),
-            block_timestamp: block_timestamp.into(),
+            block_hash: block_header.hash.to_string(),
+            block_timestamp: block_header.timestamp.into(),
             receipt_id,
             action_kind,
             args,
@@ -208,7 +207,7 @@ impl ActionReceiptAction {
     }
 }
 
-impl crate::models::MySqlMethods for ActionReceiptAction {
+impl crate::models::SqlMethods for ActionReceiptAction {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);
@@ -268,7 +267,7 @@ impl ActionReceiptsOutput {
     }
 }
 
-impl crate::models::MySqlMethods for ActionReceiptsOutput {
+impl crate::models::SqlMethods for ActionReceiptsOutput {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_hash);
         args.add(&self.block_timestamp);

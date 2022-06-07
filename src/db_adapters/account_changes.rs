@@ -1,6 +1,6 @@
-use crate::models;
-
 use futures::future::try_join_all;
+
+use crate::models;
 
 pub(crate) async fn store_account_changes(
     pool: &sqlx::Pool<sqlx::Postgres>,
@@ -28,12 +28,12 @@ async fn store_account_changes_for_chunk(
     block_timestamp: u64,
     shard_id: near_indexer_primitives::types::ShardId,
 ) -> anyhow::Result<()> {
-    crate::models::chunked_insert(
+    models::chunked_insert(
         pool,
         &state_changes
             .iter()
             .filter_map(|state_change| {
-                models::account_changes::AccountChange::from_state_change_with_cause(
+                models::AccountChange::from_state_change_with_cause(
                     state_change,
                     block_hash,
                     block_timestamp,
@@ -47,8 +47,7 @@ async fn store_account_changes_for_chunk(
                 account_change.index_in_chunk = i as i32;
                 account_change
             })
-            .collect::<Vec<models::account_changes::AccountChange>>(),
-        10,
+            .collect::<Vec<models::AccountChange>>(),
     )
     .await?;
 

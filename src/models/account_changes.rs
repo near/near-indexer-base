@@ -83,7 +83,7 @@ impl AccountChange {
     }
 }
 
-impl crate::models::MySqlMethods for AccountChange {
+impl crate::models::SqlMethods for AccountChange {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.account_id);
         args.add(&self.block_timestamp);

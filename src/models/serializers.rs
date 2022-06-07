@@ -1,4 +1,3 @@
-use near_indexer_primitives::views::ActionView;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -55,8 +54,10 @@ pub(crate) fn extract_action_type_and_value_from_action_view(
     action_view: &near_indexer_primitives::views::ActionView,
 ) -> (String, serde_json::Value) {
     match action_view {
-        ActionView::CreateAccount => ("CREATE_ACCOUNT".to_string(), json!({})),
-        ActionView::DeployContract { code } => (
+        near_indexer_primitives::views::ActionView::CreateAccount => {
+            ("CREATE_ACCOUNT".to_string(), json!({}))
+        }
+        near_indexer_primitives::views::ActionView::DeployContract { code } => (
             "DEPLOY_CONTRACT".to_string(),
             json!({
                 "code_sha256":  hex::encode(
@@ -64,7 +65,7 @@ pub(crate) fn extract_action_type_and_value_from_action_view(
                 )
             }),
         ),
-        ActionView::FunctionCall {
+        near_indexer_primitives::views::ActionView::FunctionCall {
             method_name,
             args,
             gas,
@@ -90,18 +91,18 @@ pub(crate) fn extract_action_type_and_value_from_action_view(
 
             ("FUNCTION_CALL".to_string(), arguments)
         }
-        ActionView::Transfer { deposit } => (
+        near_indexer_primitives::views::ActionView::Transfer { deposit } => (
             "TRANSFER".to_string(),
             json!({ "deposit": deposit.to_string() }),
         ),
-        ActionView::Stake { stake, public_key } => (
+        near_indexer_primitives::views::ActionView::Stake { stake, public_key } => (
             "STAKE".to_string(),
             json!({
                 "stake": stake.to_string(),
                 "public_key": public_key,
             }),
         ),
-        ActionView::AddKey {
+        near_indexer_primitives::views::ActionView::AddKey {
             public_key,
             access_key,
         } => (
@@ -111,13 +112,13 @@ pub(crate) fn extract_action_type_and_value_from_action_view(
                 "access_key": crate::models::serializers::AccessKeyView::from(access_key),
             }),
         ),
-        ActionView::DeleteKey { public_key } => (
+        near_indexer_primitives::views::ActionView::DeleteKey { public_key } => (
             "DELETE_KEY".to_string(),
             json!({
                 "public_key": public_key,
             }),
         ),
-        ActionView::DeleteAccount { beneficiary_id } => (
+        near_indexer_primitives::views::ActionView::DeleteAccount { beneficiary_id } => (
             "DELETE_ACCOUNT".to_string(),
             json!({
                 "beneficiary_id": beneficiary_id,

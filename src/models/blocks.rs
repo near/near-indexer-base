@@ -32,7 +32,7 @@ impl Block {
     }
 }
 
-impl crate::models::MySqlMethods for Block {
+impl crate::models::SqlMethods for Block {
     fn add_to_args(&self, args: &mut sqlx::postgres::PgArguments) {
         args.add(&self.block_height);
         args.add(&self.block_hash);

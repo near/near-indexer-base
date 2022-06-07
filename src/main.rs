@@ -142,14 +142,13 @@ async fn handle_streamer_message(
         streamer_message.block.header.timestamp,
     );
 
-    let dependant_futures = async {
-        transactions_future.await?;
-        // this guy can contain local receipts, so we have to do that after transactions_future finished the work
-        receipts_future.await?;
-        Ok(())
-    };
-
-    try_join!(blocks_future, chunks_future, dependant_futures)?;
+    blocks_future.await?;
+    // FK to block_hash
+    chunks_future.await?;
+    // we have FK both to blocks and chunks
+    transactions_future.await?;
+    // this guy can contain local receipts, so we have to do that after transactions_future finished the work
+    receipts_future.await?;
     try_join!(
         // this guy depends on transactions and receipts with its FKs
         account_changes_future,

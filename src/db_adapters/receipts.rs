@@ -430,8 +430,9 @@ async fn store_receipt_actions(
         })
         .collect();
 
+    // Next 2 tables depend on action_receipts, so we have to wait for it at first
+    models::chunked_insert(pool, &receipt_actions).await?;
     try_join!(
-        models::chunked_insert(pool, &receipt_actions),
         models::chunked_insert(pool, &receipt_action_actions),
         models::chunked_insert(pool, &receipt_action_output_data),
     )?;

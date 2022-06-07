@@ -94,13 +94,13 @@ async fn handle_streamer_message(
     receipts_cache: ReceiptsCache,
     strict_mode: bool,
 ) -> anyhow::Result<u64> {
-    // if streamer_message.block.header.height % 100 == 0 {
-    eprintln!(
-        "{} / shards {}",
-        streamer_message.block.header.height,
-        streamer_message.shards.len()
-    );
-    // }
+    if streamer_message.block.header.height % 100 == 0 {
+        eprintln!(
+            "{} / shards {}",
+            streamer_message.block.header.height,
+            streamer_message.shards.len()
+        );
+    }
 
     let blocks_future = db_adapters::blocks::store_block(pool, &streamer_message.block);
 
@@ -146,16 +146,15 @@ async fn handle_streamer_message(
         transactions_future.await?;
         // this guy can contain local receipts, so we have to do that after transactions_future finished the work
         receipts_future.await?;
-        // this guy thinks that receipts_future finished, and clears the cache
-        execution_outcomes_future.await?;
         Ok(())
     };
 
+    try_join!(blocks_future, chunks_future, dependant_futures)?;
     try_join!(
-        blocks_future,
-        chunks_future,
+        // this guy depends on transactions and receipts with its FKs
         account_changes_future,
-        dependant_futures
+        // this guy thinks that receipts_future finished, and clears the cache
+        execution_outcomes_future
     )?;
     Ok(streamer_message.block.header.height)
 }

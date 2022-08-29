@@ -77,8 +77,8 @@ WHERE
 
 use indexer_16_partitions;
 
--- 700ms. Postgres: 4s
--- aurora: 200ms
+-- 700ms. Postgres: 6s
+-- aurora: 1.5 minutes :(
 SELECT COUNT(DISTINCT transactions.transaction_hash) AS in_transactions_count
 FROM transactions
          LEFT JOIN action_receipts ON action_receipts.originated_from_transaction_hash = transactions.transaction_hash
@@ -147,7 +147,7 @@ WHERE action_kind = 'DEPLOY_CONTRACT'
 ORDER BY action_receipts.block_timestamp;
 
 -- https://github.com/near/near-analytics/blob/main/aggregations/db_tables/daily_receipts_per_contract_count.py
--- 10s, good
+-- Aurora: 10s
 SELECT
     action_receipts__actions.receiver_account_id,
     COUNT(action_receipts__actions.receipt_id) AS receipts_count
@@ -158,7 +158,7 @@ WHERE action_receipts__actions.action_kind = 'FUNCTION_CALL'
 GROUP BY action_receipts__actions.receiver_account_id;
 
 -- https://github.com/near/near-analytics/blob/main/aggregations/db_tables/daily_ingoing_transactions_per_account_count.py
--- 7s, good
+-- 7s in aurora
 -- It has a cheat in JOIN clause, it is also helpful there. Wihout it, it runs 40s
 SELECT
     action_receipts.receiver_account_id,

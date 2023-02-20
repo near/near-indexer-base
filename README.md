@@ -1,4 +1,6 @@
-# Indexer Base
+# Indexer Base [DEPRECATED]
+
+Consider using [Microindexers](https://github.com/near/near-microindexers) instead.
 
 Async Postgres-compatible solution to load the data from NEAR blockchain.
 Based on [NEAR Lake Framework](https://github.com/near/near-lake-framework-rs).
